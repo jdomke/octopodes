@@ -2,16 +2,19 @@
 // may want to add high/low span
 #ifndef OBSERVATION_SPACES_H
 #define OBSERVATION_SPACES_H
-
+#include <torch/torch.h>
 namespace octorl {
 
     struct StepReturn {
         //ObservationSpace observation;
+        torch::Tensor observation;
         float reward = 0;
-        bool terminated;
+        bool terminated = false;
+        bool goal = false;
         bool done = false;
 
-        //StepReturn() {};
+        StepReturn() {};
+        //print();
     };
     
     struct DiscreteActionSpace {

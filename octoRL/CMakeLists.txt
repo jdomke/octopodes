@@ -1,15 +1,38 @@
 cmake_minimum_required(VERSION 3.16)
-
-
+#export CXX=/usr/local/bin/g++-10
+#set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-10")
 project(OctoRL
     VERSION 0.01
     DESCRIPTION "RL OCTOPODE"
     LANGUAGES CXX)
+#set (CMAKE_CXX_STANDARD 20)
+find_package(Torch REQUIRED)
+include_directories(SYSTEM ${TORCH_INCLUDE_DIRS})
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
 add_executable(main main.cpp
+    src/driver.cpp
     src/Spaces.cpp
-    src/envs/MountainCar.cpp)   
+    src/Mlp.cpp
+    src/envs/MountainCar.cpp
+    src/ExperienceReplay.cpp
+    src/agents/Dqn.cpp
+    src/envs/Blackjack.cpp)   
+target_link_libraries(main "${TORCH_LIBRARIES}")
+set_property(TARGET main PROPERTY CXX_STANDARD 17)
+
     #include_directories(${PROJECT_SOURCE_DIR})
-    
+
+#if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+#set(TORCH_CXX_FLAGS "-D_GLIBCXX_USE_CXX17_ABI=1")
+#endif()    
     #add_subdirectory(src)
 target_include_directories(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if (MSVC)
+  file(GLOB TORCH_DLLS "${TORCH_INSTALL_PREFIX}/lib/*.dll")
+  add_custom_command(TARGET main
+                     POST_BUILD
+                     COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                     ${TORCH_DLLS}
+                     $<TARGET_FILE_DIR:main>)
+endif (MSVC)
