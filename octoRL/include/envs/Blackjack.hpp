@@ -33,6 +33,7 @@ namespace octorl {
             int getObservationSize();
             int currentStep();
             void playerView();
+            int memorySize();
     };
 }
 

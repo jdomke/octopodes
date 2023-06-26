@@ -15,10 +15,10 @@ namespace octorl {
         int step;
         torch::Tensor state;
         torch::Tensor next_state;
-        std::pair<int,int> action;
+        int action;
         float reward;
         bool done;
-        Memory(int s, torch::Tensor st, std::pair<int,int> at, float rt, torch::Tensor st1, bool d);
+        Memory(int s, torch::Tensor st, int at, float rt, torch::Tensor st1, bool d);
     };
 
     class ExperienceReplay {

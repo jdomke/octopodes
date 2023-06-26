@@ -19,7 +19,8 @@ namespace octorl {
             static const int observation_space_size = 2;
             void transition(int action);
         public:
-            MountainCar();  
+            MountainCar(int seed); 
+            MountainCar(); 
             std::default_random_engine gen;
             std::uniform_real_distribution<float> distribution{std::uniform_real_distribution<float>(-0.6,-0.4)};
             StepReturn step(int action);
@@ -28,7 +29,8 @@ namespace octorl {
             int getActionSize();
             int getObservationSize();
             int currentStep();
-
+            void setState(float p, float v);
+            int memorySize();
     };
 }
 
