@@ -114,3 +114,8 @@ void octorl::Blackjack::playerView() {
 
 
 }
+
+
+int octorl::Blackjack::memorySize() {
+    return 2*observation_space_size + 3;
+}

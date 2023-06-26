@@ -1,6 +1,6 @@
 #include "../include/ExperienceReplay.hpp"
 
-octorl::Memory::Memory(int s, torch::Tensor st, std::pair<int,int>  at, float rt, torch::Tensor st1, bool d) {
+octorl::Memory::Memory(int s, torch::Tensor st, int  at, float rt, torch::Tensor st1, bool d) {
     step = s;
     state = st.clone();
     action = at;

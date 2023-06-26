@@ -13,6 +13,7 @@ namespace octorl {
             // gonna have to update for higher then 1d input dim
             virtual int getObservationSize() = 0;
             virtual int currentStep() = 0;
+            virtual int memorySize() = 0;
 
         private:
             static const int action_space_size;

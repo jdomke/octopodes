@@ -2,7 +2,7 @@
 #include <iostream>
 
 
-octorl::Dqn::Dqn(std::shared_ptr<octorl::EnvironmentsBase> environment, size_t buffer_size,octorl::Mlp policy_model, octorl::Mlp policy2_model, 
+octorl::Dqn::Dqn(std::shared_ptr<octorl::EnvironmentsBase> environment, size_t buffer_size,octorl::Mlp policy_model, 
                 float g, float eps, float decay, float eps_min, int ep_count, int seed, double lr, int batch) {
 
     env = environment;
@@ -13,8 +13,9 @@ octorl::Dqn::Dqn(std::shared_ptr<octorl::EnvironmentsBase> environment, size_t b
     epsilon_min = eps_min;
     episodes = ep_count;
     model = policy_model;
-    target_model = policy2_model;
-    loadstatedict(target_model,model);
+    target_model = policy_model;
+    loadstatedict(target_model,policy_model);
+    loadstatedict(model,policy_model);
     learning_rate = lr;
     batch_size = batch;
     model_optimizer = std::make_shared<torch::optim::Adam>(model.parameters(), lr);
@@ -53,7 +54,7 @@ torch::Tensor octorl::Dqn::calcTargetF(octorl::Memory m) {
 
     torch::Tensor target_f = target_model.forward(m.state);
     
-    target_f[0][m.action.first] = target;
+    target_f[0][m.action] = target;
     
     return target_f;
 }

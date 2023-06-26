@@ -16,7 +16,7 @@ namespace octorl {
 
     class Dqn {
         public:
-            Dqn(std::shared_ptr<EnvironmentsBase> environment, size_t buffer_size, Mlp policy_model, Mlp policy2_model,
+            Dqn(std::shared_ptr<EnvironmentsBase> environment, size_t buffer_size, Mlp policy_model, 
                 float g, float eps, float decay, float eps_min,int ep_count, int seed, double lr,int batch);
             torch::Tensor modelPredict(torch::Tensor x);
             torch::Tensor targetPredict(torch::Tensor x);
@@ -33,6 +33,7 @@ namespace octorl {
             void run();
             void updateEpsilon();
             bool modelsMatch();
+            
         private:
 
             std::default_random_engine gen;
