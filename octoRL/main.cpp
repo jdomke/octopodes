@@ -15,10 +15,10 @@
 
 using namespace std;
 int main(int argc, char** argv) {//*/
-  int *anodes{new int[2]{24,24}};
+  int *anodes{new int[2]{64, 32}};
   int rank, numranks, comm_sz;
-  //shared_ptr<octorl::MountainCar> aenv(new octorl::MountainCar());
-  shared_ptr<octorl::Cartpole> aenv(new octorl::Cartpole());
+  shared_ptr<octorl::MountainCar> aenv(new octorl::MountainCar());
+  //shared_ptr<octorl::Cartpole> aenv(new octorl::Cartpole());
     MPI_Init(&argc, &argv);
   MPI_Comm_size(MPI_COMM_WORLD, &numranks);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -26,7 +26,7 @@ int main(int argc, char** argv) {//*/
   octorl::Mlp anet(aenv->getObservationSize(), aenv->getActionSize(), 2, anodes,1);
   octorl::Mlp pnet(aenv->getObservationSize(), 1, 2, anodes);
 
-  octorl::A3C async(aenv, 100000, pnet, anet, 0.95, 500, 2314, 0.001, 64, rank, numranks);
+  octorl::A3C async(aenv, 100000, pnet, anet, 0.99, 1500, 2314, 0.001, 16, rank, numranks);
   torch::Tensor tensor = torch::rand({aenv->getObservationSize()});
 
   async.run();//action(aenv->reset().observation);

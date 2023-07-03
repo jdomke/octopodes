@@ -6,7 +6,7 @@
 
 octorl::ActorMemory::ActorMemory(torch::Tensor obs, torch::Tensor v, int act, int action_size, float r, bool d) {
     state = obs;
-    action_mask = torch::zeros({action_size});
+    action_mask = torch::zeros({action_size}).to(v.device());
     action_mask[act] = 1;
     action = act;
     reward = r;
@@ -30,6 +30,7 @@ octorl::A3C::A3C(std::shared_ptr<octorl::EnvironmentsBase> environment, size_t b
     num_ranks = nr;
     local_size = buffer_size;   
     t_max = batch;
+    time_steps = ep_count;
     t = 0;
     entropy_param = 0.01;
     if (torch::cuda::is_available()) {                                                                                                                                                                                     std::cout << "CUDA is available! Training on GPU." << std::endl;                                                                                                                                           
@@ -56,18 +57,18 @@ void octorl::A3C::test() {
     float avg_reward= 0;
     torch::Tensor init_obs;
     for(int i = 0; i < 100; i++){
-        int rewards = 0; 
+        float rewards = 0; 
         auto obs = env->reset();    
         rewards += obs.reward;
         avg_reward += obs.reward;
         int act;
         while(!obs.done) {
-            init_obs = obs.observation;
-            act = action(obs.observation);
+    	    init_obs = obs.observation;
+	    act = action(obs.observation);
             obs = env->step(act);
             rewards += obs.reward;
             avg_reward += obs.reward;
-        }
+	}
         if(obs.goal){
             test_goals++;
             //std::cout<<rewards<<std::endl;
@@ -102,7 +103,6 @@ void octorl::A3C::globalNetworkRun() {
         sendCriticModel(i);
         //sendKeepRunning(true,i);
     }
-    int time_steps = 1500;
     int src;
     for(int i = 0; i < time_steps; i++) {
         // MESSAGE ORDER IS VERY IMPORTANT
@@ -126,30 +126,29 @@ void octorl::A3C::globalNetworkRun() {
 
 bool octorl::A3C::workerRun() {
     t_start = t;
-    
     auto init_obs = env->getState();
    
 
     auto act = action(init_obs);
     auto obs = env->step(act);
 
-    actor_memory.push_back(octorl::ActorMemory(init_obs, critic.forward(init_obs).detach(), act, env->getActionSize(), obs.reward, obs.done));
+    actor_memory.push_back(octorl::ActorMemory(init_obs, critic.forward(init_obs).to(device).detach(), act, env->getActionSize(), obs.reward, obs.done));
     t++;
     int steps = 1;
      while(!obs.done) {
         init_obs = obs.observation;
         act = action(init_obs);
         obs = env->step(act);
-        actor_memory.push_back(octorl::ActorMemory(init_obs, critic.forward(init_obs).detach(), act, env->getActionSize(), obs.reward, obs.done));
+        actor_memory.push_back(octorl::ActorMemory(init_obs, critic.forward(init_obs).to(device).detach(), act, env->getActionSize(), obs.reward, obs.done));
         t++;
 
         if(t - t_start == t_max && !obs.done) {
-            calculateGradient(critic.forward(init_obs).detach());
+            calculateGradient(critic.forward(init_obs).to(device).detach());
             return recvKeepRunning();
 
         }
     }
-    calculateGradient(torch::zeros(1).detach());
+    calculateGradient(torch::zeros(1).to(device).detach());
     t = 0;
     env->reset();
 
@@ -161,15 +160,16 @@ void octorl::A3C::calculateGradient(torch::Tensor R) {
 
     critic_optimizer->zero_grad();  
     
-    torch::Tensor scale = torch::tensor({(int)actor_memory.size()});
+    torch::Tensor scale = torch::tensor({(int)actor_memory.size()}).to(device);
     for(int i = actor_memory.size() - 1; i >= 0; i--) {
-        R = actor_memory[i].reward + gamma * R;
+        R = actor_memory[i].reward + gamma * R; 
         torch::Tensor prob = actor.forward(actor_memory[i].state).to(device);
+
+
         torch::Tensor actor_loss = -1*torch::log(torch::matmul(prob,actor_memory[i].action_mask) + 1e-10)*(R - actor_memory[i].value)/scale;
         //torch::Tensor entropy = torch::sum(prob*torch::log(prob * 1e-10));
         //std::cout<<entropy<<std::endl;
         //actor_loss += entropy_param*entropy;
-        
         torch::Tensor value = critic.forward(actor_memory[i].state).to(device);
         torch::Tensor value_loss = torch::mse_loss(R, value)/(scale);  
         
@@ -365,12 +365,12 @@ bool octorl::A3C::recvKeepRunning() {
 
 int octorl::A3C::action(torch::Tensor state) {
    
-    torch::Tensor out = actor.forward(state).to(device).contiguous();
-    
+    //torch::Tensor out = actor.forward(state).to(device).contiguous();
+    torch::Tensor out = actor.forward(state).contiguous();
+
     std::random_device rd;
     std::mt19937 gen(rd());
     std::discrete_distribution<> d(out.data_ptr<float>(), out.data_ptr<float>() + out.numel());
-    
     
     return d(gen);
 }

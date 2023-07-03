@@ -85,6 +85,7 @@ namespace octorl {
             int update_count;
             int t_max;
             int t;
+    	    int time_steps;
             int t_start;
     };
 }
