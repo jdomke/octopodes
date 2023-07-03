@@ -17,6 +17,10 @@ octorl::DqnAsync::DqnAsync(std::shared_ptr<octorl::EnvironmentsBase> environment
     batch_freq = 32;
     epochs = 500;
     target_model = policy_model;
+                                                                                                                                                         
+    if (torch::cuda::is_available()) {                                                                                                                                                                                     std::cout << "CUDA is available! Training on GPU." << std::endl;                                                                                                                                           
+        device = torch::kCUDA;                                                                                                                                                                                     
+    }         
     loadstatedict(target_model,policy_model);
     loadstatedict(model,policy_model);
     learning_rate = lr;
@@ -29,7 +33,6 @@ octorl::DqnAsync::DqnAsync(std::shared_ptr<octorl::EnvironmentsBase> environment
     // actors 
     for(auto e : actor_envs) {
         octorl::actor a;
-
         a.env = e;
         a.model = model;
         a.target = target_model;
@@ -286,15 +289,21 @@ float octorl::DqnAsync::trainOnBatch(std::vector<octorl::Memory> batch) {
 
     torch::TensorList input {in_vec};
     torch::TensorList target {out_vec};
-    torch::Tensor input_batch = torch::cat(input);
-    torch::Tensor target_batch = torch::cat(target);
+    
+    torch::Tensor input_batch = torch::cat(input).to(device);
+    torch::Tensor target_batch = torch::cat(target).to(device);
     model_optimizer->zero_grad();
+    
     torch::Tensor output = model.forward({input_batch});
-    torch::Tensor loss = torch::mse_loss(target_batch,output);
-    loss.backward();
-
+    torch::Tensor loss = torch::mse_loss(target_batch,output).to(device);
+    //std::cout<<loss.grad()<<std::endl;
+    //std::cout<<model.parameters()[0].grad()<<std::endl;
+    loss.backward({}, false);
+    //torch::autograd::backward(loss);
+    //std::cout<<model.parameters()[0]<<std::endl;
+    //std::cout<<model.parameters()[1].grad()<<std::endl;
+    //std::cout<<loss<<std::endl;
     model_optimizer->step();
-
     return loss.item().toDouble();
 
 }

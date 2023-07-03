@@ -1,6 +1,7 @@
 #include "include/driver.hpp"
 #include "include/quickTest.hpp"
 #include "include/agents/DqnAsync.hpp"
+#include "include/agents/A3C.hpp"
 //#include <c10d/ProcessGroupMPI.hpp>
 #include <omp.h>
 #include <time.h>
@@ -13,8 +14,33 @@
 
 
 using namespace std;
-int main(int argc, char** argv) {
+int main(int argc, char** argv) {//*/
+  int *anodes{new int[2]{24,24}};
   int rank, numranks, comm_sz;
+  //shared_ptr<octorl::MountainCar> aenv(new octorl::MountainCar());
+  shared_ptr<octorl::Cartpole> aenv(new octorl::Cartpole());
+    MPI_Init(&argc, &argv);
+  MPI_Comm_size(MPI_COMM_WORLD, &numranks);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
+  octorl::Mlp anet(aenv->getObservationSize(), aenv->getActionSize(), 2, anodes,1);
+  octorl::Mlp pnet(aenv->getObservationSize(), 1, 2, anodes);
+
+  octorl::A3C async(aenv, 100000, pnet, anet, 0.95, 500, 2314, 0.001, 64, rank, numranks);
+  torch::Tensor tensor = torch::rand({aenv->getObservationSize()});
+
+  async.run();//action(aenv->reset().observation);
+  MPI_Finalize();
+
+  return 0;
+//  */
+/*
+  int rank, numranks, comm_sz;
+  torch::Device device = torch::kCPU;
+  if (torch::cuda::is_available()) {
+    cout << "CUDA is available! Training on GPU." << endl;
+    device = torch::kCUDA;
+  }
   MPI_Init(&argc, &argv);
   MPI_Comm_size(MPI_COMM_WORLD, &numranks);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);

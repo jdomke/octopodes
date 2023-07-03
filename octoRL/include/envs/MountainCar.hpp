@@ -31,6 +31,7 @@ namespace octorl {
             int currentStep();
             void setState(float p, float v);
             int memorySize();
+            torch::Tensor getState();
     };
 }
 

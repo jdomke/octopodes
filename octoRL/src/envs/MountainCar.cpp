@@ -36,7 +36,7 @@ octorl::StepReturn octorl::MountainCar::step(int action) {
     ///std::cout<<action<<std::endl;
     transition(action);
     //double obs_vals[] = {position,velocity};
-    if(steps + 1 == 200)
+    if(steps + 1 >= 200)
         obs.done = true;
     if(position >= 0.5) {
         obs.reward = 10;
@@ -89,4 +89,9 @@ void octorl::MountainCar::setState(float p, float v) {
 int octorl::MountainCar::memorySize() {
 
     return 2*observation_space_size + 3;
+}
+
+
+torch::Tensor octorl::MountainCar::getState(){
+    return torch::tensor({{position,velocity}});
 }

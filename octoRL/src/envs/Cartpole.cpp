@@ -91,3 +91,7 @@ int octorl::Cartpole::memorySize() {
 
     return 2*observation_space_size + 3;
 }
+
+torch::Tensor octorl::Cartpole::getState(){
+    return torch::tensor({{x, x_dot, theta, theta_dot}});
+}

@@ -119,3 +119,8 @@ void octorl::Blackjack::playerView() {
 int octorl::Blackjack::memorySize() {
     return 2*observation_space_size + 3;
 }
+
+torch::Tensor octorl::Blackjack::getState() {
+    auto options = torch::TensorOptions().dtype(torch::kFloat32);
+    return torch::tensor({{sumHand(player_hand), dealer_hand[0],(int) usableAce(player_hand)}},options);
+}

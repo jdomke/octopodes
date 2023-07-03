@@ -53,6 +53,7 @@ namespace octorl {
             int getObservationSize();
             int currentStep();
             int memorySize();
+            torch::Tensor getState();
 
             
 

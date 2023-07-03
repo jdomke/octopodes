@@ -2,14 +2,14 @@
 #include "Mlp.hpp"
 // for now only using relu
 
-octorl::Mlp::Mlp(int input, int output, int hidden_layers, int *nodes) {
+octorl::Mlp::Mlp(int input, int output, int hidden_layers, int *nodes,int fA) {
     
     std::string label = "fc";
     input_size = input;
     output_size = output;
     total_layers = hidden_layers + 1;   
     num_elem_param = 0;
-
+    final_activation = fA;
     if(hidden_layers > 0) {
         int i = 0;
         layers.push_back(register_module("input",torch::nn::Linear(input,nodes[i])));
@@ -31,19 +31,24 @@ octorl::Mlp::Mlp(int input, int output, int hidden_layers, int *nodes) {
         num_elem_param += input_size * output + output;
     }
     
-
-   
 }
-
 
 torch::Tensor octorl::Mlp::forward(torch::Tensor x)
 {
     int i = 0;
-    //x = x.reshape({x.size(-1),x.size(0)});
+
     for(i; i < total_layers-1; i++) {
         x = torch::relu(layers[i]->forward(x));
     }
-    x = layers.back()->forward(x);
+    switch(final_activation) {
+        case 1:
+            x = torch::softmax(layers.back()->forward(x),1);
+            break;
+        default:
+            x = layers.back()->forward(x);
+            break;
+    }
+
     return x;
 }
 
@@ -52,7 +57,7 @@ octorl::Mlp& octorl::Mlp::operator= (const octorl::Mlp& mlp){
     output_size = mlp.output_size;
     total_layers = mlp.total_layers;
     num_elem_param = mlp.num_elem_param;
-
+    final_activation = mlp.final_activation;
 
     int i = 0;
     for(auto l : mlp.layer_shapes) 
@@ -149,7 +154,53 @@ void octorl::Mlp::loadFromSerial(float *buffer) {
     torch::autograd::GradMode::set_enabled(true);
 }
 
+void octorl::Mlp::applyGradient(float *buffer, int num_steps) {
+
+    int b = 0, pc = 0;
+
+    for(int i = 0; i < layer_shapes.size(); i++) {
+        auto t = torch::zeros({layer_shapes[i].second, layer_shapes[i].first});
+        for(int j = 0; j < layer_shapes[i].second; j++) {
+            if(layer_shapes[i].first == 1) {
+                t[j] = buffer[b++];
+            }
+            else {
+                for (int k = 0; k < layer_shapes[i].first; k++)
+                {
+                    t[j][k] = buffer[b++];
+                }
+            }
+        }
+
+        parameters()[pc].mutable_grad() = t;///num_steps;
+       
+        //std::cout<<parameters()[pc].mutable_grad()<<std::endl;
+        t = torch::zeros({layer_shapes[i].second});
+        pc += 1;
+        for (int j = 0; j < layer_shapes[i].second; j++) {
+            t[j] = buffer[b++];
+        }
+        
+        parameters()[pc].mutable_grad() = t;///num_steps;
+       // std::cout<<parameters()[pc].mutable_grad()<<std::endl;
+     
+        pc += 1;
+        if(pc >= parameters().size())
+            break;
+    }    
+
+}
 
 int octorl::Mlp::getElementCount() {
     return num_elem_param;
+}
+
+std::vector<torch::Tensor> octorl::Mlp::emptyGradientHolder() {
+    std::vector<torch::Tensor> grad;
+
+    for(auto i : layer_shapes){
+        grad.push_back(torch::zeros({i.second,i.first}));
+        grad.push_back(torch::zeros(i.second));
+    }
+    return grad;
 }

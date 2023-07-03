@@ -34,6 +34,7 @@ namespace octorl {
             int currentStep();
             void playerView();
             int memorySize();
+            torch::Tensor getState();
     };
 }
 

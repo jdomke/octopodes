@@ -13,18 +13,12 @@
 #include "../ExperienceReplay.hpp"
 #include "../EnvironmentsBase.hpp"
 #include "../Mlp.hpp"
+#include "../MpiTags.hpp"
 #include "mpi.h"
 
 
 
 namespace octorl {
-
-    enum tags {
-        model_tag,
-        batch_tag,
-        keep_running_tag
-    };
-
     struct actor {
         std::shared_ptr<EnvironmentsBase> env;
         Mlp model;
@@ -67,6 +61,7 @@ namespace octorl {
             float gamma;
             float epsilon;
             float epsilon_decay;
+            torch::Device device =torch::kCPU;
             float epsilon_min;
             int batch_freq;
             int episodes;
