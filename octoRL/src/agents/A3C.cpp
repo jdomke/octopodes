@@ -23,7 +23,7 @@ octorl::A3C::A3C(std::shared_ptr<octorl::EnvironmentsBase> environment, size_t b
     t_max = batch;
     time_steps = ep_count;
     t = 0;
-    entropy_param = 0.01;
+    entropy_param = 0.0001;
     if (torch::cuda::is_available()) {                                                                                                                                                                                     std::cout << "CUDA is available! Training on GPU." << std::endl;                                                                                                                                           
         device = torch::kCUDA;                                                                                                                                                                                     
     }   
@@ -74,7 +74,6 @@ void octorl::A3C::test() {
 void octorl::A3C::run() {
 
     if(rank == 0) {
-        test();
         globalNetworkRun();
         test();
     }
@@ -158,10 +157,10 @@ void octorl::A3C::calculateGradient(torch::Tensor R) {
 
 
         //torch::Tensor actor_loss = -1*torch::log(torch::matmul(prob,actor_memory[i].action_mask) + 1e-10)*(R - actor_memory[i].value)/scale;
-        torch::Tensor actor_loss = -1*torch::log(prob[actor_memory[i].action] + 1e-10)*(R - actor_memory[i].value)/scale;
-        //torch::Tensor entropy = torch::sum(prob*torch::log(prob * 1e-10));
+        torch::Tensor actor_loss = -1*torch::log(prob[0][actor_memory[i].action] + 1e-10)*(R - actor_memory[i].value)/scale;
+        torch::Tensor entropy = torch::sum(prob*torch::log(prob * 1e-10));
         //std::cout<<entropy<<std::endl;
-        //actor_loss += entropy_param*entropy;
+        actor_loss += entropy_param*entropy;
         torch::Tensor value = critic.forward(actor_memory[i].state).to(device);
         torch::Tensor value_loss = torch::mse_loss(R, value)/(scale);  
         

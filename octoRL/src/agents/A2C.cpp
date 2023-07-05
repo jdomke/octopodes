@@ -180,7 +180,7 @@ void octorl::A2C::train() {
     //std::cout<<entropy<<std::endl;
     //std::cout<<input_batch<<std::endl;
     auto actor_loss = torch::mean(-1*torch::log(torch::sum(prob*mask,1) + 1e-10)*advantage);
-    //actor_loss += entropy_param*entropy;
+    actor_loss += entropy_param*entropy;
     //std::cout<<actor_loss<<std::endl;
     
     actor_loss.backward();
