@@ -4,16 +4,7 @@
 //https://github.com/dennybritz/reinforcement-learning/blob/master/PolicyGradient/a3c/train.py
 
 
-octorl::ActorMemory::ActorMemory(torch::Tensor obs, torch::Tensor v, int act, int action_size, float r, bool d) {
-    state = obs;
-    action_mask = torch::zeros({action_size}).to(v.device());
-    action_mask[act] = 1;
-    action = act;
-    reward = r;
-    done = d;
-    value = v;//critic.forward(obs);
-    //advantage = adv;
-}
+
 
 
 // make sure to check that number of eps is greater then num workers
@@ -166,7 +157,8 @@ void octorl::A3C::calculateGradient(torch::Tensor R) {
         torch::Tensor prob = actor.forward(actor_memory[i].state).to(device);
 
 
-        torch::Tensor actor_loss = -1*torch::log(torch::matmul(prob,actor_memory[i].action_mask) + 1e-10)*(R - actor_memory[i].value)/scale;
+        //torch::Tensor actor_loss = -1*torch::log(torch::matmul(prob,actor_memory[i].action_mask) + 1e-10)*(R - actor_memory[i].value)/scale;
+        torch::Tensor actor_loss = -1*torch::log(prob[actor_memory[i].action] + 1e-10)*(R - actor_memory[i].value)/scale;
         //torch::Tensor entropy = torch::sum(prob*torch::log(prob * 1e-10));
         //std::cout<<entropy<<std::endl;
         //actor_loss += entropy_param*entropy;

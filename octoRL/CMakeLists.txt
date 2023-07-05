@@ -26,7 +26,8 @@ add_executable(main main.cpp
     src/envs/Cartpole.cpp
     src/quickTest.cpp
     src/agents/DqnAsync.cpp
-    src/agents/A3C.cpp)  
+    src/agents/A3C.cpp
+    src/agents/A2C.cpp)  
 
 # if(OpenMP_CXX_FOUND)
 #     target_link_libraries(main PUBLIC OpenMP::OpenMP_CXX)

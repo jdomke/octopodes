@@ -20,6 +20,17 @@ namespace octorl {
         bool done;
         Memory(int s, torch::Tensor st, int at, float rt, torch::Tensor st1, bool d);
     };
+    
+    struct ActorMemory {
+        torch::Tensor state;
+        torch::Tensor action_mask;
+        torch::Tensor advantage;
+        torch::Tensor value;
+        int action;
+        float reward;
+        bool done;
+        ActorMemory(torch::Tensor obs, torch::Tensor v, int act, int action_size, float r, bool d);
+    };
 
     class ExperienceReplay {
         private:

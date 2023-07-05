@@ -9,6 +9,16 @@ octorl::Memory::Memory(int s, torch::Tensor st, int  at, float rt, torch::Tensor
     done = d;
 }
 
+octorl::ActorMemory::ActorMemory(torch::Tensor obs, torch::Tensor v, int act, int action_size, float r, bool d) {
+    state = obs;
+    action_mask = torch::zeros({action_size}).to(v.device());
+    action_mask[act] = 1;
+    action = act;
+    reward = r;
+    done = d;
+    value = v;//critic.forward(obs);
+    //advantage = adv;
+}
 
 octorl::ExperienceReplay::ExperienceReplay(size_t size) {
     max_size = size;

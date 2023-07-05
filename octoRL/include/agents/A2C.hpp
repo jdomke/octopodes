@@ -1,5 +1,5 @@
-#ifndef A3C_H
-#define A3C_H
+#ifndef A2C_H
+#define A2C_H
 
 #include <torch/torch.h>
 #include <random>
@@ -16,17 +16,17 @@
 #include "../MpiTags.hpp"
 #include "mpi.h"
 
-
 namespace octorl {
 
-    class A3C {
- 
-        public: 
-            A3C(std::shared_ptr<EnvironmentsBase> environment, size_t buffer_size, Mlp policy_model,Mlp actor_model,
+    class A2C {
+
+        public:
+            A2C(std::shared_ptr<EnvironmentsBase> environment, size_t buffer_size, Mlp policy_model,Mlp actor_model,
                float g, int ep_count, int seed, double lr,int batch, int r, int nr);
+
             void run();
             void test();
-            void globalNetworkRun();
+            void learnerRun();
             bool workerRun();
             bool sendCriticModel(int r);
             bool sendActorModel(int r);
@@ -34,16 +34,11 @@ namespace octorl {
             bool recvActorModel();
             void sendKeepRunning(bool run, int dst);
             bool recvKeepRunning();
+            void recvBatch();
+            void sendBatch();
+            void calculateQValAddLocal();
+            void train();
             int action(torch::Tensor state);
-            void calculateGradient(torch::Tensor R);
-            void calculateActorGradient();
-            void sendGradientSrc();
-            int recvGradientSrc();
-            void sendActorGradient(int mem_size);
-            void sendCriticGradient(int mem_size);
-            void recvActorGradientAndStep(int src);
-            void recvCriticGradientAndStep(int src);
-            torch::Tensor stateActionPair(torch::Tensor state, int act);
 
 
         private:
@@ -56,31 +51,28 @@ namespace octorl {
             torch::Device device =torch::kCPU;
             std::shared_ptr<torch::optim::Adam> critic_optimizer;
             std::shared_ptr<torch::optim::Adam> actor_optimizer;
-            std::vector<std::pair<Memory, float>> memory;
-            std::vector<ActorMemory> actor_memory;
+            std::deque<std::shared_ptr<float>> local_memory;
+            std::vector<ActorMemory> memory;
+            std::vector<std::pair<ActorMemory, float>> batch_memory;
             double learning_rate; 
             float gamma;
             int batch_freq;
             int episodes;
             int batch_size;
+            int local_batch_size;
             int epochs;
             int local_size;
+            int local_memory_size;
             int local_batch;
             int entropy_param;
             int rank;
             int num_ranks;
-            int local_memory_size;
             int steps;
             int update_count;
-            int t_max;
-            int t;
-    	    int time_steps;
-            int t_start;
+            void addToLocalMemory(torch::Tensor init_obs, int act, float reward, float R, int done);
+
+
     };
 }
-
-
-
-
 
 #endif
