@@ -4,6 +4,7 @@
 #include <vector>
 #include <omp.h>
 #include <iostream>
+#include <quadmath.h>
 
 using namespace std;
 
@@ -51,15 +52,29 @@ class DenseMatrix{
 
             DenseMatrix<T> operator/(const T& rhs);
 
+            void insert(int col, int row, T val);
+
             vector<T> operator*(const vector<T>& rhs);
 
             friend std::ostream& operator<<(std::ostream& os, const DenseMatrix<T>& M){
-                for (int i = 0; i < M.getRows(); ++i) {
-                    for (int j = 0; j < M.getCols(); ++j) {
-                        os << M.matrix_[i][j] << ' ';
-                    }
-                os << '\n';
-                }       
+                if constexpr(std::is_same_v<T, __float128>){
+    for (const auto& row : M.matrix_) {
+        for (const auto& element : row) {
+            char buffer[256];
+            quadmath_snprintf(buffer, sizeof(buffer), "%.10Qg", element);
+            std::cout << buffer << " ";
+        }
+        std::cout << std::endl;
+    }
+                }
+                else{
+                    for (int i = 0; i < M.getRows(); ++i) {
+                        for (int j = 0; j < M.getCols(); ++j) {
+                            os << M.matrix_[i][j] << ' ';   
+                        }
+                    os << '\n';
+                    }   
+                }    
                 return os;
             }
                 
@@ -213,18 +228,25 @@ DenseMatrix<T> &DenseMatrix<T> :: operator-=(const DenseMatrix<T>& rhs){
 
 template <typename T>
 DenseMatrix<T> DenseMatrix<T> :: operator*(const DenseMatrix<T>& rhs){
-    #pragma omp declare reduction(DenseMatrixSum: DenseMatrix<T>: \
-    omp_out += omp_in) \
-    initializer(omp_priv = DenseMatrix<T>())
-    
-    DenseMatrix<T> resMatrix(rows_, rhs.cols_); 
+
+    DenseMatrix<T> resMatrix(rows_, rhs.cols_, 0); 
     if (cols_ == rhs.rows_){
-        #pragma omp parallel for collapse(3) reduction(DenseMatrixSum:resMatrix)
-        for (int i = 0; i < rows_; i++){
-            for (int j = 0; j < rhs.cols_; j++){
-                for (int k = 0; k < cols_; k++){
-                    resMatrix.matrix_[i][j] += matrix_[i][k] * rhs.matrix_[k][j];
+        #pragma omp parallel
+        {
+            DenseMatrix<T> tempMatrix(rows_, rhs.cols_);
+            
+            #pragma omp for collapse(3)
+            for (int i = 0; i < rows_; i++) {
+                for (int j = 0; j < rhs.cols_; j++) {
+                    for (int k = 0; k < cols_; k++) {
+                        tempMatrix.matrix_[i][j] += matrix_[i][k] * rhs.matrix_[k][j];
+                    }
                 }
+            }
+            
+            #pragma omp critical
+            {
+                resMatrix += tempMatrix;
             }
         }
     }
@@ -336,5 +358,11 @@ vector<T> DenseMatrix<T> :: operator*(const vector<T>& rhs){
     return resVector;
 }
 
+template <typename T>
+void DenseMatrix<T> :: insert(int row, int col, T val){
+    if (row < rows_ && col < cols_){
+        matrix_[row][col] = val;
+    }
+}
 
 #endif

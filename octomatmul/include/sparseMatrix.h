@@ -8,6 +8,8 @@
 #include <iostream>
 #include <omp.h>
 #include <algorithm>
+#include "helper.h"
+#include <quadmath.h>
 
 using namespace std;
 
@@ -18,29 +20,34 @@ class SparseMatrix{
         int rows_, cols_, nonZeros_; 
 
     public:
-        SparseMatrix(int Row, int Col, int NonZeros, T high = 0);
+        SparseMatrix(int Row = 0, int Col = 0, int NonZeros = 0, T high = 0);
 
         ~SparseMatrix();
 
         friend ostream& operator<<(ostream& os, const SparseMatrix<T> & m){
-            auto itr = m.eleLocation_.begin();
-            bool flag = true;       //corresponds to whether theres still non-zero elements to be outputted
-            for (int i = 0; i < m.getRows(); i++){
-                for (int j = 0; j < m.getCols(); j++){
-                    if (m.getNumNonZeros() > 0 && flag == true && i == itr->first.first && j == itr->first.second){
-                        os << itr->second << " ";
-                        if (itr != m.eleLocation_.end()){
-                            itr++;
+            if constexpr(std::is_same_v<T, __float128>){
+                
+            }
+            else{
+                auto itr = m.eleLocation_.begin();
+                bool flag = true;       //corresponds to whether theres still non-zero elements to be outputted
+                for (int i = 0; i < m.getRows(); i++){
+                    for (int j = 0; j < m.getCols(); j++){
+                        if (m.getNumNonZeros() > 0 && flag == true && i == itr->first.first && j == itr->first.second){
+                            os << itr->second << " ";
+                            if (itr != m.eleLocation_.end()){
+                                itr++;
+                            }
+                            if (itr == m.eleLocation_.end()){
+                                flag = false;
+                            }
                         }
-                        if (itr == m.eleLocation_.end()){
-                            flag = false;
+                        else{
+                            os << "0 ";
                         }
                     }
-                    else{
-                        os << "0 ";
-                    }
+                    os << endl;
                 }
-                os << endl;
             }
             // for (auto itr = m.eleLocation_.begin(); itr != m.eleLocation_.end(); itr++){
             //     cout << itr->first.first << " " << itr->first.second << " " << itr->second << endl;
@@ -102,8 +109,8 @@ SparseMatrix<T> :: SparseMatrix(int Row, int Col, int NonZeros, T high){
         for (int i = 0; i < nonZeros_; i++){
             int row = rand() % Row;         //obtain the number of nonZeros and generate that many random elements for the matrix
             int col = rand() % Col;
-            int val = rand() % high + 1;
-            std::pair <int, int> pos = std::make_pair(row, col);    
+            T val = getRandomValue<T>(0, high);
+            std::pair <int, int> pos = std::make_pair(row,col);    
             while (posDupe.find(pos)!= posDupe.end()){          //check if the generated row/column pair is duplicated, if so, generate new until no duplicate
                 row = rand() % Row;
                 col = rand() % Col;
@@ -169,7 +176,6 @@ SparseMatrix<T> SparseMatrix<T> :: operator+(const SparseMatrix<T>& rhs){
         resMatrix.rows_ = max(rhs.getRows(), getRows());
         resMatrix.cols_ = max(rhs.getCols(), getCols());
         resMatrix.nonZeros_ = rhs.nonZeros_ + nonZeros_;
-        #pragma omp parallel for
         for (auto itr = rhs.eleLocation_.begin(); itr != rhs.eleLocation_.end(); itr++){
             if (resMatrix.eleLocation_[itr->first])
             {
@@ -187,7 +193,6 @@ SparseMatrix<T>&  SparseMatrix<T> :: operator+=(const SparseMatrix<T>& rhs){
     rows_ = max(rhs.getRows(), rows_);
     cols_ = max(rhs.getCols(), cols_);
     nonZeros_ = rhs.nonZeros_ + nonZeros_;
-    #pragma omp parallel for
     for (auto itr = rhs.eleLocation_.begin(); itr != rhs.eleLocation_.end(); itr++){
         if (eleLocation_[itr->first]){
             eleLocation_[itr->first] += itr->second;
@@ -204,7 +209,6 @@ SparseMatrix<T> SparseMatrix<T> :: operator-(const SparseMatrix<T> & rhs){
         resMatrix.rows_ = max(rhs.getRows(), getRows());
         resMatrix.cols_ = max(rhs.getCols(), getCols());
         resMatrix.nonZeros_ = rhs.nonZeros_ + nonZeros_;
-        #pragma omp parallel for
         for (auto itr = rhs.eleLocation_.begin(); itr != rhs.eleLocation_.end(); itr++){
             if (resMatrix.eleLocation_[itr->first])
             {
@@ -222,7 +226,6 @@ SparseMatrix<T>& SparseMatrix<T> :: operator-=(const SparseMatrix<T> & rhs){
     rows_ = max(rhs.getRows(), rows_);
     cols_ = max(rhs.getCols(), cols_);
     nonZeros_ = rhs.nonZeros_ + nonZeros_;
-    #pragma omp parallel for
     for (auto itr = rhs.eleLocation_.begin(); itr != rhs.eleLocation_.end(); itr++){
         if (eleLocation_[itr->first]){
             eleLocation_[itr->first] -= itr->second;
@@ -237,7 +240,6 @@ SparseMatrix<T>& SparseMatrix<T> :: operator-=(const SparseMatrix<T> & rhs){
 template <typename T>
 SparseMatrix<T> SparseMatrix<T> :: Transpose(){
     SparseMatrix<T> resMatrix(cols_, rows_, nonZeros_);
-    #pragma omp parallel for 
     for (auto itr = eleLocation_.begin(); itr != eleLocation_.end(); itr++)
     {
         pair<int, int> pos = make_pair(itr->first.second, itr->first.first);
@@ -256,9 +258,11 @@ SparseMatrix<T> SparseMatrix<T> :: operator*(const SparseMatrix<T>& rhs){
     auto rhsT(rhs);
     rhsT = rhsT.Transpose();
     SparseMatrix<T> resMatrix(getRows(),rhsT.getRows(), 0, 0);
-    #pragma omp parallel for collapse(2)
-    for (auto itr = eleLocation_.begin(); itr != eleLocation_.end(); itr++){     
+    #pragma omp parallel
+    #pragma omp single
+    for (auto itr = eleLocation_.begin(); itr != eleLocation_.end(); itr++){ 
         for (auto itr2 = rhsT.eleLocation_.begin(); itr2 != rhsT.eleLocation_.end(); itr2++){
+            #pragma omp task
             if (itr->first.second == itr2->first.second){
                 auto pos = std::make_pair(itr->first.first, itr2->first.first);
                 if (resMatrix.eleLocation_[pos]){
@@ -274,6 +278,36 @@ SparseMatrix<T> SparseMatrix<T> :: operator*(const SparseMatrix<T>& rhs){
     return resMatrix;
 
 }
+// template <typename T>
+// SparseMatrix<T> SparseMatrix<T>::operator*(const SparseMatrix<T>& rhs) {
+//     if (cols_ != rhs.rows_) {
+//         cout << "Unmatching size between two matrices.\n";
+//         exit(1);
+//     }
+
+//     auto rhsT(rhs);
+//     rhsT = rhsT.Transpose();
+//     SparseMatrix<T> resMatrix(getRows(), rhsT.getRows(), 0, 0);
+
+//     #pragma omp double
+//     for (auto itr = eleLocation_.begin(); itr != eleLocation_.end(); itr++) {
+//         for (auto itr2 = rhsT.eleLocation_.begin(); itr2 != rhsT.eleLocation_.end(); itr2++) {
+//             #pragma omp task
+//             if (itr->first.second == itr2->first.second) {
+//                 auto pos = std::make_pair(itr->first.first, itr2->first.first);
+//                 if (resMatrix.eleLocation_[pos]) {
+//                     resMatrix.eleLocation_[pos] += (itr->second * itr2->second);
+//                 } else {
+//                     resMatrix.eleLocation_[pos] = itr->second * itr2->second;
+//                 }
+//             }
+//         }
+//     }
+
+//     resMatrix.nonZeros_ = resMatrix.eleLocation_.size();
+//     return resMatrix;
+// }
+
 
 template <typename T>
 SparseMatrix<T>& SparseMatrix<T> :: operator*=(const SparseMatrix<T>& rhs){
@@ -286,7 +320,6 @@ vector<T> SparseMatrix<T> :: operator*(const vector<T>& rhs){
     vector<T> resVector(rows_, 0);
     if (rhs.size() == cols_){
         int j = 0;
-        #pragma omp parallel for
         for (int i = 0; i < rows_; i++){
             j = 0;
             T sum = 0;
@@ -328,7 +361,6 @@ template <typename T>
 SparseMatrix<T> SparseMatrix<T> :: operator+(const T& rhs)
 {
     SparseMatrix<T> resMatrix(*this);
-    #pragma omp parallel for
     for (auto itr = resMatrix.eleLocation_.begin(); itr != resMatrix.eleLocation_.end(); itr++){
         itr->second += rhs;  
     }
@@ -339,7 +371,6 @@ SparseMatrix<T> SparseMatrix<T> :: operator+(const T& rhs)
 template <typename T>
 SparseMatrix<T> SparseMatrix<T> :: operator-(const T& rhs){
     SparseMatrix<T> resMatrix(*this);
-    #pragma omp parallel for
     for (auto itr = resMatrix.eleLocation_.begin(); itr != resMatrix.eleLocation_.end(); itr++){
         itr->second -= rhs;  
     }
@@ -352,7 +383,6 @@ SparseMatrix<T> SparseMatrix<T>::operator*(const T& rhs) {
 
     std::vector<std::pair<std::pair<int, int>, T>> elements(resMatrix.eleLocation_.begin(), resMatrix.eleLocation_.end());
 
-    #pragma omp parallel for
     for (size_t i = 0; i < elements.size(); ++i) {
         elements[i].second *= rhs;
     }
@@ -369,7 +399,6 @@ SparseMatrix<T> SparseMatrix<T>::operator*(const T& rhs) {
 template <typename T>
 SparseMatrix<T> SparseMatrix<T> :: operator/(const T& rhs){
     SparseMatrix<T> resMatrix(*this);
-    #pragma omp parallel for
     for (auto itr = resMatrix.eleLocation_.begin(); itr != resMatrix.eleLocation_.end(); itr++){
         itr->second /= rhs;  
     }
