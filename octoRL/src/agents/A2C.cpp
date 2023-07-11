@@ -17,9 +17,9 @@ octorl::A2C::A2C(std::shared_ptr<octorl::EnvironmentsBase> environment, size_t b
     num_ranks = nr;
     local_size = buffer_size;   
     local_batch_size = std::ceil(batch/(nr-1));
-    if (torch::cuda::is_available()) {                                                                                                                                                                                     std::cout << "CUDA is available! Training on GPU." << std::endl;                                                                                                                                           
+    /*if (torch::cuda::is_available()) {                                                                                                                                                                                     std::cout << "CUDA is available! Training on GPU." << std::endl;                                                                                                                                           
         device = torch::kCUDA;                                                                                                                                                                                     
-    }   
+    }*/   
     //local_memory_size = 400;
     local_memory_size = local_batch_size;
     
@@ -172,11 +172,12 @@ void octorl::A2C::train() {
 
         mask[i] = batch_memory[i].first.action_mask;
     }
-
     torch::TensorList input {obs_vec};
     torch::Tensor input_batch = torch::cat(input).to(device);
+
     auto prob = actor.forward(input_batch);
-    auto entropy = torch::mean(torch::sum(prob*torch::log(prob + 1e-10), -1));
+
+    auto entropy = torch::mean(torch::sum(prob*torch::log(prob + 1e-10), -1)).to(device);
     //std::cout<<entropy<<std::endl;
     //std::cout<<input_batch<<std::endl;
     auto actor_loss = torch::mean(-1*torch::log(torch::sum(prob*mask,1) + 1e-10)*advantage);

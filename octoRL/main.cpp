@@ -5,7 +5,7 @@
 #include "include/agents/A2C.hpp"
 //#include "include/Cnn.hpp"
 #include "include/Policy.hpp"
-#include <libconfig.h++>
+//#include <libconfig.h++>
 #include "include/envs/MountainCar.hpp"
 //#include <c10d/ProcessGroupMPI.hpp>
 #include <omp.h>
@@ -19,7 +19,7 @@
 //#include "include/Mlp.hpp"
 
 
-using namespace libconfig;
+//using namespace libconfig;
 using namespace std;
 int main(int argc, char** argv) {
   int numranks, rank, comm_sz;
@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
   octorl::Policy pnet(obs_layer_info);
   octorl::Policy anet(act_layer_info);
   
-  octorl::A3C async(aenv, 100000, pnet, anet, 0.99, 2000, 2314, 0.001, 32, rank, numranks);
+  octorl::A2C async(aenv, 100000, pnet, anet, 0.99, 2000, 2314, 0.001, 32, rank, numranks);
   async.run();//action(aenv->reset().observation);
   MPI_Finalize();
 
