@@ -167,7 +167,7 @@ void octorl::Policy::loadFromSerial(float *buffer){
 
 }
 
-void octorl::Policy::applyGradient(float *buffer, int num_steps)
+void octorl::Policy::applyGradient(float *buffer)
 {
     int b = 0, pc = 0;
     auto p = parameters();
@@ -183,11 +183,13 @@ void octorl::Policy::applyGradient(float *buffer, int num_steps)
                         g[i][j] = buffer[b++];
                     }
                 }
+
                 parameters()[pc].mutable_grad() = g;
                 sizes = p[++pc].sizes();
                 g = torch::zeros(sizes);
                 for(int i = 0; i < sizes[0]; i++)
                     g[i] = buffer[b++];
+                
                 parameters()[pc].mutable_grad() = g;
                 pc++;
                 break;

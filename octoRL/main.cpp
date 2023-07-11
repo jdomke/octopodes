@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
   octorl::Policy pnet(obs_layer_info);
   octorl::Policy anet(act_layer_info);
   
-  octorl::A2C async(aenv, 100000, pnet, anet, 0.99, 1500, 2314, 0.001, 16, rank, numranks);
+  octorl::A3C async(aenv, 100000, pnet, anet, 0.99, 2000, 2314, 0.001, 32, rank, numranks);
   async.run();//action(aenv->reset().observation);
   MPI_Finalize();
 

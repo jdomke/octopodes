@@ -45,7 +45,7 @@ namespace octorl{
             Policy& operator= (const Policy& p);
             void serialize(float *buffer);
             void loadFromSerial(float *buffer);
-            void applyGradient(float *buffer, int num_steps = 1);
+            void applyGradient(float *buffer);
             int getElementCount();
         private:
             //std::vector<std::shared_ptr<torch::nn::AnyModule>> layers;

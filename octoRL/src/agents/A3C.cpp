@@ -154,11 +154,12 @@ void octorl::A3C::calculateGradient(torch::Tensor R) {
         torch::Tensor prob = actor.forward(actor_memory[i].state).to(device);
         
         
-        torch::Tensor actor_loss = -1*torch::log(torch::matmul(prob,actor_memory[i].action_mask) + 1e-10)*(R - actor_memory[i].value);
+        //torch::Tensor actor_loss = -1*torch::log(torch::matmul(prob,actor_memory[i].action_mask) + 1e-10)*(R - actor_memory[i].value);///scale;
+        torch::Tensor actor_loss = -1*torch::log(prob[0][actor_memory[i].action] + 1e-10)*(R - actor_memory[i].value)/scale;
         torch::Tensor entropy = torch::sum(prob*torch::log(prob * 1e-10));
+        //actor_loss /= scale;
         actor_loss += entropy_param*entropy;
-        actor_loss /= scale;
-        torch::Tensor value = critic.forward(actor_memory[i].state).requires_grad_(true).to(device);
+        torch::Tensor value = critic.forward(actor_memory[i].state).to(device);
         torch::Tensor value_loss = torch::mse_loss(R, value)/scale;  
         //std::cout<<actor_loss<<std::endl;
         actor_loss.backward();
@@ -198,9 +199,9 @@ int octorl::A3C::recvGradientSrc() {
 
 // should move these gradient sends to model class
 void octorl::A3C::sendActorGradient(int mem_size) {
-    float *buffer = new float[actor.getElementCount() + 1];   
+    float *buffer = new float[actor.getElementCount()];   
     int b = 0;
-    buffer[b++] = (float) mem_size; 
+    //buffer[b++] = (float) mem_size; 
     for(auto i : actor.parameters()){
         auto flat = torch::flatten(i.grad());
         for(int j = 0; j < flat.numel(); j++)
@@ -210,9 +211,9 @@ void octorl::A3C::sendActorGradient(int mem_size) {
 }
 
 void octorl::A3C::sendCriticGradient(int mem_size) {
-    float *buffer = new float[critic.getElementCount() + 1];   
+    float *buffer = new float[critic.getElementCount()];   
     int b = 0; 
-    buffer[b++] = (float) mem_size; 
+    //buffer[b++] = (float) mem_size; 
     for(auto i : critic.parameters()){
         auto flat = torch::flatten(i.grad());
         for(int j = 0; j < flat.numel(); j++)
@@ -222,22 +223,23 @@ void octorl::A3C::sendCriticGradient(int mem_size) {
 }
 
 void octorl::A3C::recvActorGradientAndStep(int src) {
-    float *buffer = new float[actor.getElementCount() + 1];   
+    float *buffer = new float[actor.getElementCount()];   
+    //actor_optimizer->zero_grad();
     MPI_Status status;
     MPI_Recv(buffer, actor.getElementCount(), MPI_FLOAT, src, octorl::gradient_tag,MPI_COMM_WORLD, &status);
-    int num_steps = (int) buffer[0];
-    actor.applyGradient(buffer++, num_steps);
+    //int num_steps = (int) buffer[0];
+    actor.applyGradient(buffer);
     actor_optimizer->step();
 }
 
 void octorl::A3C::recvCriticGradientAndStep(int src) {
-    float *buffer = new float[critic.getElementCount() + 1];   
+    float *buffer = new float[critic.getElementCount()];   
     MPI_Status status;
-
+    //critic_optimizer->zero_grad();
     MPI_Recv(buffer, critic.getElementCount(), MPI_FLOAT, src, octorl::gradient_tag,MPI_COMM_WORLD, &status);
-    int num_steps = (int) buffer[0];
-    critic.applyGradient(buffer++, num_steps);
-
+    //int num_steps = (int) buffer[0];
+  
+    critic.applyGradient(buffer);
     critic_optimizer->step();
 }
 
@@ -250,7 +252,6 @@ bool octorl::A3C::recvKeepRunning() {
     MPI_Recv(&kr, 1, MPI_C_BOOL, 0, octorl::keep_running_tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     return kr;
 }
-
 
 int octorl::A3C::action(torch::Tensor state) {
    
