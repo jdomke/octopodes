@@ -8,7 +8,7 @@
 
 
 // make sure to check that number of eps is greater then num workers
-octorl::A3C::A3C(std::shared_ptr<octorl::EnvironmentsBase> environment, size_t buffer_size, octorl::Mlp policy_model,octorl::Mlp actor_model,
+octorl::A3C::A3C(std::shared_ptr<octorl::EnvironmentsBase> environment, size_t buffer_size, octorl::Policy policy_model,octorl::Policy actor_model,
                float g, int ep_count, int seed, double lr,int batch, int r, int nr) {
 
     env = environment;
@@ -30,14 +30,12 @@ octorl::A3C::A3C(std::shared_ptr<octorl::EnvironmentsBase> environment, size_t b
 
     critic = policy_model;
     actor = actor_model;
-    loadstatedict(critic, policy_model);
-    loadstatedict(actor, actor_model);
+    octorl::loadstatedict2(critic, policy_model);
+    octorl::loadstatedict2(actor, actor_model);
     critic_optimizer = std::make_shared<torch::optim::Adam>(critic.parameters(), lr);
     actor_optimizer = std::make_shared<torch::optim::Adam>(actor.parameters(), lr);
     actor_optimizer->zero_grad();
     critic_optimizer->zero_grad();
-    std::vector<torch::Tensor> actor_gradients = actor.emptyGradientHolder();
-    std::vector<torch::Tensor> critic_gradients = critic.emptyGradientHolder();
     srand(seed);
 
 }
@@ -154,22 +152,18 @@ void octorl::A3C::calculateGradient(torch::Tensor R) {
     for(int i = actor_memory.size() - 1; i >= 0; i--) {
         R = actor_memory[i].reward + gamma * R; 
         torch::Tensor prob = actor.forward(actor_memory[i].state).to(device);
-
-
-        //torch::Tensor actor_loss = -1*torch::log(torch::matmul(prob,actor_memory[i].action_mask) + 1e-10)*(R - actor_memory[i].value)/scale;
-        torch::Tensor actor_loss = -1*torch::log(prob[0][actor_memory[i].action] + 1e-10)*(R - actor_memory[i].value)/scale;
+        
+        
+        torch::Tensor actor_loss = -1*torch::log(torch::matmul(prob,actor_memory[i].action_mask) + 1e-10)*(R - actor_memory[i].value);
         torch::Tensor entropy = torch::sum(prob*torch::log(prob * 1e-10));
-        //std::cout<<entropy<<std::endl;
         actor_loss += entropy_param*entropy;
-        torch::Tensor value = critic.forward(actor_memory[i].state).to(device);
-        torch::Tensor value_loss = torch::mse_loss(R, value)/(scale);  
-        
-        
+        actor_loss /= scale;
+        torch::Tensor value = critic.forward(actor_memory[i].state).requires_grad_(true).to(device);
+        torch::Tensor value_loss = torch::mse_loss(R, value)/scale;  
+        //std::cout<<actor_loss<<std::endl;
         actor_loss.backward();
         value_loss.backward();
     }
-    //std::cout<<actor.parameters()[actor.parameters().size()-1].grad()<<std::endl;
-    //std::cout<<critic.parameters()[critic.parameters().size()-1].grad()<<std::endl;
 
     sendGradientSrc();
     sendActorGradient(actor_memory.size());
@@ -179,99 +173,7 @@ void octorl::A3C::calculateGradient(torch::Tensor R) {
     actor_memory.clear();
     memory.clear();
 }
-/*
-bool octorl::A3C::workerRun() {
-    auto init_obs = env->reset().observation;
-    auto act = action(init_obs);
-    auto obs = env->step(act);
-    //addToLocalMemory(init_obs, act, obs.reward, obs.observation, obs.done);
-       actor_memory.push_back(octorl::ActorMemory(init_obs, act, env->getActionSize(), obs.reward + 
-        gamma*critic.forward(init_obs) - critic.forward(init_obs)));
-    else
-        actor_me    if(!obs.done)
- mory.push_back(octorl::ActorMemory(init_obs, act, env->getActionSize(),obs.reward - critic.forward(init_obs)));//torch::tensor({obs.reward})));
 
-    memory.push_back(std::make_pair(octorl::Memory(-1,init_obs, act, obs.reward, obs.observation, obs.done),obs.reward + 
-        gamma*critic.forward(init_obs)[0].item().toDouble()));
-        //gamma*critic.forward(stateActionPair(obs.observation, act))[0].item().toDouble()));
-    int steps = 1;
-    int running_reward = obs.reward;
-    while(!obs.done) {
-        init_obs = obs.observation;
-        act = action(init_obs);
-        obs = env->step(act);
-        
-        if(!obs.done)
-            actor_memory.push_back(octorl::ActorMemory(init_obs, act, env->getActionSize(), obs.reward + 
-            gamma*critic.forward(init_obs) - critic.forward(init_obs)));
-        else
-            actor_memory.push_back(octorl::ActorMemory(init_obs, act, env->getActionSize(), obs.reward -critic.forward(init_obs)));//torch::tensor({obs.reward})));
-        
-        if(!obs.done)
-            memory.push_back(std::make_pair(octorl::Memory(-1,init_obs, act, obs.reward, obs.observation, obs.done),obs.reward + 
-            gamma*critic.forward(init_obs)[0].item().toDouble()));
-            //gamma*critic.forward(stateActionPair(obs.observation, act))[0].item().toDouble()));
-        else
-            memory.push_back(std::make_pair(octorl::Memory(-1,init_obs, act, obs.reward, obs.observation, obs.done),obs.reward));
-        
-        running_reward += obs.reward;
-        steps++;
-    }
-    calculateGradient();
-    
-    return recvKeepRunning();
-}*/
-
-
-/*
-// can alternatively be used to do multiple batches per gradient send
-void octorl::A3C::calculateGradient() {
-    actor_optimizer->zero_grad();
-    critic_optimizer->zero_grad();        
-    
-    std::vector<torch::Tensor> obs_vec;
-    //std::vector<torch::Tensor> advantage;
-    torch::Tensor q_val = torch::zeros({(int)memory.size()}).to(device);
-    torch::Tensor advantage = torch::zeros({(int)memory.size()}).to(device);
-   // torch::Tensor advantage = torch::zeros({(int)memory.size()}).to(device);
-     int i;
-    for(i = 0; i < actor_memory.size(); i++)
-    { 
-        torch::Tensor prob = actor.forward(actor_memory[i].state).to(device);
-        //std::cout<<prob<<std::endl;
-        //std::cout<<torch::matmul(prob,actor_memory[i].action_mask)<<std::endl;
-        torch::Tensor actor_loss = -1*torch::log(torch::matmul(prob,actor_memory[i].action_mask))*actor_memory[i].advantage;
-        //std::cout<<actor_loss<<std::endl;
-        actor_loss.backward();
-        obs_vec.push_back(memory[i].first.state);
-        q_val[i] = memory[i].second;
-        //mask[i] = actor_memory[i].action_mask;
-
-        advantage[i] = actor_memory[i].advantage.item().toDouble();;
-    }
-    //std::cout<<"past actor\n";
-
-//    std::cout<<i<<std::endl;
- //   std::cout<<actor.parameters()[0].grad()<<std::endl;
-     torch::TensorList input {obs_vec};
-    torch::Tensor input_batch = torch::cat(input).to(device);
-    
-    //torch::TensorList a {advantage};
-    //torch::Tensor adv_batch = torch::cat(a).to(device);
-   // std::cout<<torch::matmul(actor.forward(input_batch),mask)<<std::endl;
-    
-    torch::Tensor value = critic.forward(input_batch).reshape({input_batch.size(0)});
-
-    torch::Tensor value_loss = torch::mse_loss(q_val, value);
-    value_loss.backward();
-    sendGradientSrc();
-    sendActorGradient();
-    sendCriticGradient();    
-    recvActorModel();
-    recvCriticModel();
-    actor_memory.clear();
-    memory.clear();
-}*/
 
 torch::Tensor octorl::A3C::stateActionPair(torch::Tensor state, int act) {
     torch::Tensor input = torch::zeros({env->getObservationSize() + 1});
@@ -323,13 +225,9 @@ void octorl::A3C::recvActorGradientAndStep(int src) {
     float *buffer = new float[actor.getElementCount() + 1];   
     MPI_Status status;
     MPI_Recv(buffer, actor.getElementCount(), MPI_FLOAT, src, octorl::gradient_tag,MPI_COMM_WORLD, &status);
-   // std::cout<<"grad:"<<actor.parameters()[0].grad()<<std::endl;
-   // std::cout<<"vale:"<<actor.parameters()[0]<<std::endl;
     int num_steps = (int) buffer[0];
     actor.applyGradient(buffer++, num_steps);
-   // std::cout<<"grad:"<<actor.parameters()[0].grad()<<std::endl;
     actor_optimizer->step();
-   // std::cout<<"vale:"<<actor.parameters()[0]<<std::endl;
 }
 
 void octorl::A3C::recvCriticGradientAndStep(int src) {

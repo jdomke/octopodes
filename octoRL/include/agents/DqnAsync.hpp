@@ -12,8 +12,10 @@
 #include <cmath>
 #include "../ExperienceReplay.hpp"
 #include "../EnvironmentsBase.hpp"
-#include "../Mlp.hpp"
+#include "../Policy.hpp"
+//#include "../Mlp.hpp"
 #include "../MpiTags.hpp"
+#include "../helper.hpp"
 #include "mpi.h"
 
 
@@ -21,14 +23,14 @@
 namespace octorl {
     struct actor {
         std::shared_ptr<EnvironmentsBase> env;
-        Mlp model;
-        Mlp target;
+        //Mlp model;
+        //Mlp target;
     };
 
     class DqnAsync {
 
         public: 
-            DqnAsync(std::shared_ptr<EnvironmentsBase> environment, size_t buffer_size, Mlp policy_model, std::vector<std::shared_ptr<EnvironmentsBase>> act_envs,
+            DqnAsync(std::shared_ptr<EnvironmentsBase> environment, size_t buffer_size, std::shared_ptr<Policy>  policy_model,
                 float g, float eps, float decay, float eps_min,int ep_count, int seed, double lr,int batch,int argc, char** argv);      
             void run();
             std::vector<actor> actors;
@@ -50,9 +52,8 @@ namespace octorl {
             std::default_random_engine gen;
             std::uniform_real_distribution<float> distribution{std::uniform_real_distribution<float>(0,1)};
             std::shared_ptr<EnvironmentsBase> env;
-            std::vector<std::shared_ptr<EnvironmentsBase>> actor_envs;
-            octorl::Mlp model;
-            octorl::Mlp target_model;
+            std::shared_ptr<Policy> model;
+            std::shared_ptr<Policy> target_model;
             ExperienceReplay exp_buffer;
             std::deque<std::shared_ptr<float>> local_memory;
             std::shared_ptr<torch::optim::Adam> model_optimizer;

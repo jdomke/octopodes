@@ -1,45 +1,33 @@
 #include "../../include/agents/DqnAsync.hpp"
 
 
-octorl::DqnAsync::DqnAsync(std::shared_ptr<octorl::EnvironmentsBase> environment, size_t buffer_size, octorl::Mlp policy_model, std::vector<std::shared_ptr<octorl::EnvironmentsBase>> act_envs,
+octorl::DqnAsync::DqnAsync(std::shared_ptr<octorl::EnvironmentsBase> environment, size_t buffer_size, std::shared_ptr<octorl::Policy> policy_model,
                 float g, float eps, float decay, float eps_min,int ep_count, int seed, double lr,int batch,int argc, char** argv) {
 
     env = environment;
     exp_buffer = ExperienceReplay(buffer_size);
     local_size = buffer_size;
-    actor_envs = act_envs;
     gamma = g;
     epsilon = eps;
     epsilon_decay = decay;
     epsilon_min = eps_min;
     episodes = ep_count;
-    model = policy_model;
+    model = std::make_shared<octorl::Policy>(*policy_model);
     batch_freq = 32;
-    epochs = 500;
-    target_model = policy_model;
-                                                                                                                                                         
+    epochs = ep_count;
+    target_model = std::make_shared<octorl::Policy>(*policy_model);
     if (torch::cuda::is_available()) {                                                                                                                                                                                     std::cout << "CUDA is available! Training on GPU." << std::endl;                                                                                                                                           
         device = torch::kCUDA;                                                                                                                                                                                     
     }         
-    loadstatedict(target_model,policy_model);
-    loadstatedict(model,policy_model);
+    octorl::loadstatedict(target_model,policy_model);
+    octorl::loadstatedict(model,policy_model);
     learning_rate = lr;
     batch_size = batch;
     local_batch = batch;
-    model_optimizer = std::make_shared<torch::optim::Adam>(model.parameters(), lr);
-    target_optimizer = std::make_shared<torch::optim::Adam>(target_model.parameters(), lr);
+    model_optimizer = std::make_shared<torch::optim::Adam>(model->parameters(), lr);
+    target_optimizer = std::make_shared<torch::optim::Adam>(target_model->parameters(), lr);
     srand(seed);
     
-    // actors 
-    for(auto e : actor_envs) {
-        octorl::actor a;
-        a.env = e;
-        a.model = model;
-        a.target = target_model;
-        loadstatedict(a.model, model);
-        loadstatedict(a.target, model);
-        actors.push_back(a);
-    }
     MPI_Comm_size(MPI_COMM_WORLD, &numranks);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 }
@@ -82,8 +70,7 @@ void octorl::DqnAsync::run() {
         std::vector<int> to_send;
         
         for(int i = 1; i < numranks; i++){
-            to_send.push_back(recvBatchAndTrain());
-
+            recvBatchAndTrain();
         }
         updateTarget();
         for(int i =1; i < numranks; i++) {
@@ -92,6 +79,7 @@ void octorl::DqnAsync::run() {
         }
         if(g % 100 == 0)
             std::cout<<"Epoch: "<<g<<std::endl;
+            test();
         //std::cout<<"models sent\n";
         }
         
@@ -157,28 +145,24 @@ int octorl::DqnAsync::action(torch::Tensor state) {
         int r = rand() % env->getActionSize();
         return r;
     }
-    return model.forward(state).argmax().item().toInt();
+    return model->forward(state).argmax().item().toInt();
 }
 
 bool octorl::DqnAsync::sendModel(int r) {
+    float *buffer = new float[model->getElementCount()];    
+    model->serialize(buffer);
     
-    float *buffer = new float[model.getElementCount()];    
-  
-    model.serialize(buffer);
-    
-    MPI_Send(buffer, model.getElementCount(), MPI_FLOAT, r, octorl::model_tag, MPI_COMM_WORLD);
+    MPI_Send(buffer, model->getElementCount(), MPI_FLOAT, r, octorl::model_tag, MPI_COMM_WORLD);
     delete[] buffer;
     return true;
 }
 
 bool octorl::DqnAsync::recvModel() {
 
-    float *buffer = new float[model.getElementCount()];    
-    MPI_Recv(buffer, model.getElementCount(), MPI_FLOAT, 0, octorl::model_tag, MPI_COMM_WORLD,
+    float *buffer = new float[model->getElementCount()];    
+    MPI_Recv(buffer, model->getElementCount(), MPI_FLOAT, 0, octorl::model_tag, MPI_COMM_WORLD,
          MPI_STATUS_IGNORE);
-    
-    model.loadFromSerial(buffer);
-
+    model->loadFromSerial(buffer);
     delete[] buffer;
     return true;
 }
@@ -200,7 +184,6 @@ bool octorl::DqnAsync::sendBatch(int done) {
         }
        // local_memory.pop_front();
     }
-
     MPI_Send(batch, local_batch * env->memorySize()+2, MPI_FLOAT, 0, octorl::batch_tag, MPI_COMM_WORLD);
     delete[] batch;
 
@@ -210,9 +193,11 @@ bool octorl::DqnAsync::sendBatch(int done) {
 // first index is source
 std::pair<int,int> octorl::DqnAsync::recvBatch() {
     float *batch = new float[local_batch * env->memorySize() + 2];
-
+ 
     MPI_Recv(batch,local_batch * env->memorySize() + 2, MPI_FLOAT, MPI_ANY_SOURCE, octorl::batch_tag, MPI_COMM_WORLD,
     MPI_STATUS_IGNORE);
+
+    
     torch::Tensor init_obs = torch::ones({{env->getObservationSize()}});
     torch::Tensor next_obs = torch::ones({{env->getObservationSize()}});
     int act, done;
@@ -247,7 +232,6 @@ int octorl::DqnAsync::recvBatchAndTrain() {
     std::vector<octorl::Memory> buf;
     MPI_Recv(batch,local_batch * env->memorySize() + 2, MPI_FLOAT, MPI_ANY_SOURCE, octorl::batch_tag, MPI_COMM_WORLD,
     MPI_STATUS_IGNORE);
-    //std::cout<<"recvBatch\n";
     torch::Tensor init_obs = torch::ones((env->getObservationSize()));
     torch::Tensor next_obs = torch::ones((env->getObservationSize()));
     init_obs = init_obs.reshape({1,init_obs.size(0)});
@@ -280,7 +264,6 @@ int octorl::DqnAsync::recvBatchAndTrain() {
 float octorl::DqnAsync::trainOnBatch(std::vector<octorl::Memory> batch) {
     std::vector<torch::Tensor> in_vec;
     std::vector<torch::Tensor> out_vec;
-
     for(auto i : batch){
         
         in_vec.push_back(i.state);
@@ -289,19 +272,18 @@ float octorl::DqnAsync::trainOnBatch(std::vector<octorl::Memory> batch) {
 
     torch::TensorList input {in_vec};
     torch::TensorList target {out_vec};
-    
     torch::Tensor input_batch = torch::cat(input).to(device);
     torch::Tensor target_batch = torch::cat(target).to(device);
     model_optimizer->zero_grad();
     
-    torch::Tensor output = model.forward({input_batch});
+    torch::Tensor output = model->forward({input_batch});
     torch::Tensor loss = torch::mse_loss(target_batch,output).to(device);
     //std::cout<<loss.grad()<<std::endl;
-    //std::cout<<model.parameters()[0].grad()<<std::endl;
+    //std::cout<<model->parameters()[0].grad()<<std::endl;
     loss.backward({}, false);
     //torch::autograd::backward(loss);
-    //std::cout<<model.parameters()[0]<<std::endl;
-    //std::cout<<model.parameters()[1].grad()<<std::endl;
+    //std::cout<<model->parameters()[0]<<std::endl;
+    //std::cout<<model->parameters()[1].grad()<<std::endl;
     //std::cout<<loss<<std::endl;
     model_optimizer->step();
     return loss.item().toDouble();
@@ -309,20 +291,17 @@ float octorl::DqnAsync::trainOnBatch(std::vector<octorl::Memory> batch) {
 }
 
 torch::Tensor octorl::DqnAsync::calcTargetF(octorl::Memory m) {
-   
     double expected_q = 0;
     if(!m.done) {
-        double amax = target_model.forward(m.next_state).amax().item().toDouble();
+        double amax = target_model->forward(m.next_state).amax().item().toDouble();
         expected_q = gamma * amax;
     }
 
     double target = m.reward + expected_q;
 
    
-    torch::Tensor target_f = target_model.forward(m.state);
-
+    torch::Tensor target_f = target_model->forward(m.state);
     target_f[0][m.action] = target;
-    
     return target_f;
 }
 
@@ -360,5 +339,5 @@ void octorl::DqnAsync::pushToBuffer(octorl::Memory m) {
 }
 
 void octorl::DqnAsync::updateTarget() {
-    loadstatedict(target_model,model);
+    octorl::loadstatedict(target_model,model);
 }

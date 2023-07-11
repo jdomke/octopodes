@@ -12,7 +12,9 @@
 #include <cmath>
 #include "../ExperienceReplay.hpp"
 #include "../EnvironmentsBase.hpp"
-#include "../Mlp.hpp"
+#include "../helper.hpp"
+//#include "../Mlp.hpp"
+#include "../Policy.hpp"
 #include "../MpiTags.hpp"
 #include "mpi.h"
 
@@ -21,7 +23,7 @@ namespace octorl {
     class A2C {
 
         public:
-            A2C(std::shared_ptr<EnvironmentsBase> environment, size_t buffer_size, Mlp policy_model,Mlp actor_model,
+            A2C(std::shared_ptr<EnvironmentsBase> environment, size_t buffer_size, Policy policy_model, Policy actor_model,
                float g, int ep_count, int seed, double lr,int batch, int r, int nr);
 
             void run();
@@ -45,8 +47,8 @@ namespace octorl {
             std::default_random_engine gen;
             std::uniform_real_distribution<float> distribution{std::uniform_real_distribution<float>(0,1)};
             std::shared_ptr<EnvironmentsBase> env;
-            octorl::Mlp critic;
-            octorl::Mlp actor;
+            Policy critic;
+            Policy actor;
 
             torch::Device device =torch::kCPU;
             std::shared_ptr<torch::optim::Adam> critic_optimizer;

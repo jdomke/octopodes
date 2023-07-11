@@ -22,6 +22,7 @@ namespace octorl {
         protected:
 
     };
+
 }
 
 #endif

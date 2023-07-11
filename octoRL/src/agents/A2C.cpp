@@ -3,7 +3,7 @@
 
 
 
-octorl::A2C::A2C(std::shared_ptr<octorl::EnvironmentsBase> environment, size_t buffer_size, octorl::Mlp policy_model,octorl::Mlp actor_model,
+octorl::A2C::A2C(std::shared_ptr<octorl::EnvironmentsBase> environment, size_t buffer_size, octorl::Policy policy_model,octorl::Policy actor_model,
             float g, int ep_count, int seed, double lr,int batch, int r, int nr) {
 
 
@@ -26,8 +26,8 @@ octorl::A2C::A2C(std::shared_ptr<octorl::EnvironmentsBase> environment, size_t b
     entropy_param = 0.0001;
     critic = policy_model;
     actor = actor_model;
-    loadstatedict(critic, policy_model);
-    loadstatedict(actor, actor_model);
+    octorl::loadstatedict2(critic, policy_model);
+    octorl::loadstatedict2(actor, actor_model);
     critic_optimizer = std::make_shared<torch::optim::Adam>(critic.parameters(), lr);
     actor_optimizer = std::make_shared<torch::optim::Adam>(actor.parameters(), lr);
     actor_optimizer->zero_grad();
