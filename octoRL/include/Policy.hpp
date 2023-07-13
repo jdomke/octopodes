@@ -11,6 +11,7 @@
 // used to easily generate test networks, it is better to just define your own class
 
 namespace octorl{
+
     enum layer_type {
         linear,
         conv2d,

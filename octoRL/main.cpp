@@ -5,7 +5,7 @@
 #include "include/agents/A2C.hpp"
 //#include "include/Cnn.hpp"
 #include "include/Policy.hpp"
-//#include <libconfig.h++>
+#include <libconfig.h++>
 #include "include/envs/MountainCar.hpp"
 //#include <c10d/ProcessGroupMPI.hpp>
 #include <omp.h>
@@ -15,33 +15,83 @@
 #include <stdlib.h>
 #include <map>
 #include "mpi.h"
-
+#include "include/configure.hpp"
+#include <map>
 //#include "include/Mlp.hpp"
 
 
-//using namespace libconfig;
+using namespace libconfig;
 using namespace std;
+
+void configTest() {
+
+map<std::string, octorl::layer_type> layer_map {
+        {"linear",octorl::linear},
+        {"conv2d", octorl::conv2d},
+        {"max_pool_2d", octorl::max_pool_2d},
+        {"flatten", octorl::flatten}};
+
+map<std::string, octorl::activation_type> activation_map {
+        {"relu",octorl::relu},
+        {"softmax", octorl::softmax},
+        {"none", octorl::none}};
+
+Config cfg;
+
+cfg.readFile("../configs/a2c.cfg");
+const Setting& root = cfg.getRoot();
+
+cout<< root.exists("a2c")<<endl;
+const Setting& agent = root["a2c"]["actor"];
+
+vector<octorl::LayerInfo> act_layer_info;
+for(int i = 0; i < agent.getLength(); i++) {
+  string type, activation, label;
+  int input, output;
+  const Setting& layer = agent[i];
+
+  type = (const char *)layer.lookup("type");
+  activation = (const char *)layer.lookup("activation");
+  label = (const char *)layer.lookup("label");
+  layer.lookupValue("input", input);
+  layer.lookupValue("output", output);
+  
+  cout<<type<<" "<<activation<<" "<<label<<" "<<input<<" "<<output<<endl;
+  cout<<layer_map[type]<<endl;
+  act_layer_info.push_back(octorl::LayerInfo(layer_map[type], activation_map[activation],
+    label, input, output));
+
+  octorl::Policy anet(act_layer_info);
+  cout<<anet<<endl;
+}
+
+// cfg.readFile("../configs/test.cfg");
+// string title, author;
+// const char *var3;
+// double price;
+// int qty;
+
+// const Setting& root = cfg.getRoot();
+
+// const Setting &books = root["inventory"]["books"];
+// const Setting &book = books[0];
+// //cout<<book.lookupValue("title",var3)<<endl;
+
+// title = (const char *)book.lookup("title");
+// cout<<root["inventory"].exists("flid")<<endl;
+// cout<<title<<endl;
+
+}
+
+
 int main(int argc, char** argv) {
   int numranks, rank, comm_sz;
   MPI_Init(&argc, &argv);
-  MPI_Comm_size(MPI_COMM_WORLD, &numranks);
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
-  int *anodes{new int[2]{64, 32}};
-  shared_ptr<octorl::MountainCar> aenv(new octorl::MountainCar());
-  vector<octorl::LayerInfo> obs_layer_info = {octorl::LayerInfo(octorl::linear, octorl::relu, "input",aenv->getObservationSize(),64),
-    octorl::LayerInfo(octorl::linear, octorl::relu, "hl1",64,32),
-    octorl::LayerInfo(octorl::linear, octorl::none, "output",32,1)
-  };
-  vector<octorl::LayerInfo> act_layer_info = {octorl::LayerInfo(octorl::linear, octorl::relu, "input",aenv->getObservationSize(),64),
-    octorl::LayerInfo(octorl::linear, octorl::relu, "hl1",64,32),
-    octorl::LayerInfo(octorl::linear, octorl::softmax, "output",32,aenv->getActionSize())
-  };
-  octorl::Policy pnet(obs_layer_info);
-  octorl::Policy anet(act_layer_info);
   
-  octorl::A2C async(aenv, 100000, pnet, anet, 0.99, 2000, 2314, 0.001, 32, rank, numranks);
-  async.run();//action(aenv->reset().observation);
+  //cout<<argv[1]<<endl;
+  //configureAndRun("../configs/dqn.cfg");
+  if(argc >= 2)
+    configureAndRun(argv[1]);
   MPI_Finalize();
 
   /*

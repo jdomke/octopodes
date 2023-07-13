@@ -30,8 +30,8 @@ namespace octorl {
     class DqnAsync {
 
         public: 
-            DqnAsync(std::shared_ptr<EnvironmentsBase> environment, size_t buffer_size, std::shared_ptr<Policy>  policy_model,
-                float g, float eps, float decay, float eps_min,int ep_count, int seed, double lr,int batch,int argc, char** argv);      
+            DqnAsync(std::shared_ptr<EnvironmentsBase> environment, size_t buffer_size, Policy policy_model,
+                float g, float eps, float decay, float eps_min,int ep_count, int seed, double lr,int batch, int freq, int rank, int nr);      
             void run();
             std::vector<actor> actors;
             bool sendModel(int r);
@@ -52,8 +52,8 @@ namespace octorl {
             std::default_random_engine gen;
             std::uniform_real_distribution<float> distribution{std::uniform_real_distribution<float>(0,1)};
             std::shared_ptr<EnvironmentsBase> env;
-            std::shared_ptr<Policy> model;
-            std::shared_ptr<Policy> target_model;
+            Policy model;
+            Policy target_model;
             ExperienceReplay exp_buffer;
             std::deque<std::shared_ptr<float>> local_memory;
             std::shared_ptr<torch::optim::Adam> model_optimizer;
