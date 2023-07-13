@@ -1,12 +1,25 @@
 #include <iostream>
+#include <map>
+#include <random>
+#include <time.h>
+#include <utility>
+#include <omp.h>
+#include <algorithm>
+#include <type_traits>
+#include <limits>
+#include <mkl.h>
+#include <vector>
+#include <iomanip>
+#include <boost/multiprecision/float128.hpp>
+#include <mkl_spblas.h>
+#include "helper.h"
 #include "denseMatrix.h"
 #include "sparseMatrix.h"
 #include "my_blas.h"
-#include <time.h>
+#include "my_matmul.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
-#include <quadmath.h>
 
 using namespace std;
 
@@ -26,10 +39,10 @@ incx - increment for vector x
 incy - increment for vector y
 */
 typedef float myType;
-const myType maxNum = 16;
+const int maxNum = 16;
 
 int main(int argc, char* argv[]) {
-  int type, batch_count, batch_size_, m_, n_, k_, layout_ = 0, transA_ = 0, transB_ = 0, parallel_ = 0, incx_ = 1, incy_ = 1;
+  int type, m_, n_, k_, batch_count, batch_size_, layout_ = 0, transA_ = 0, transB_ = 0, parallel_ = 0, incx_ = 1, incy_ = 1;
   if (argc > 1) type = atoi(argv[1]);               //obtain information required to run tests
   if (argc > 2) batch_count = atoi(argv[2]);
   if (argc > 3) batch_size_ = atoi(argv[3]);
@@ -42,19 +55,32 @@ int main(int argc, char* argv[]) {
   if (argc > 10) parallel_ = atoi(argv[10]);
   if (argc > 11) incx_ = atoi(argv[11]);
   if (argc > 12) incy_ = atoi(argv[12]);
-  
+
   assert(argc > 6);
   srand(10);
-
+  if (batch_count < 1){
+    batch_count = 1;
+  }
+  if (batch_size_ < 1){
+    batch_size_ = 1;
+  }
   cout << "type: " << type << "\nbatch_count: " << batch_count << "\nbatch_size: " << batch_size_ << "\nm: " << m_ << "\nn: " << n_ << "\nk: " << k_ << "\nlayout: "<< layout_ << "\ntransA: " << transA_ << "\ntransB: " << transB_ << "\nparallel: " << parallel_ <<  "\nincx_: " << incx_ << "\nincy_: " << incy_ << endl;
+  
+  size_t align = 256;
+  int *batch_size    = static_cast<int*>(aligned_alloc(align, sizeof(int) * batch_count));      //allocate memory for variables,  variables are dynamic arrays of size batch_count so each batch has its own parameters for computation
+  int total_batch_size = 0;
+    
+  #pragma omp parallel for schedule(static) reduction(+ : total_batch_size) if (parallel_ == 1)         //allocate memory on different threads
+  for (int i = 0; i < batch_count; i++){
+    batch_size[i] = batch_size_;
+    total_batch_size += batch_size[i];        //increment total batch size based on the batch size of every batch
+  }
   if (type == 0 || type == 1 || type == 2){          //this entire code segment and its functions were inspired from https://github.com/wudu98/fugaku_batch_gemm
 
     CBLAS_LAYOUT layout = layout_ == 0 ? CblasRowMajor : CblasColMajor;       //set layout, transA, and transB according to commandline arguments
     CBLAS_TRANSPOSE transA = transA_ == 0 ? CblasNoTrans : CblasTrans;
     CBLAS_TRANSPOSE transB = transB_ == 0 ? CblasNoTrans : CblasTrans;
 
-    size_t align = 256;
-    int *batch_size    = static_cast<int*>(aligned_alloc(align, sizeof(int) * batch_count));      //allocate memory for variables,  variables are dynamic arrays of size batch_count so each batch has its own parameters for computation
     int *batch_head    = static_cast<int*>(aligned_alloc(align, sizeof(int) * batch_count));    //batch head indicate the start location of first matrix in each batch
     int *m      = static_cast<int*>(aligned_alloc(align, sizeof(int) * batch_count));
     int *n      = static_cast<int*>(aligned_alloc(align, sizeof(int) * batch_count));
@@ -65,17 +91,11 @@ int main(int argc, char* argv[]) {
     int *incx   = static_cast<int*>(aligned_alloc(align, sizeof(int) * batch_count));
     int *incy   = static_cast<int*>(aligned_alloc(align, sizeof(int) * batch_count));
     int *lda_v = static_cast<int*>(aligned_alloc(align, sizeof(int) * batch_count));
-    int total_batch_size = 0;
-    
-    #pragma omp parallel for schedule(static) reduction(+ : total_batch_size) if (parallel_ == 1)         //allocate memory on different threads
-    for (int i = 0; i < batch_count; i++){
-      batch_size[i] = batch_size_;
-      total_batch_size += batch_size[i];        //increment total batch size based on the batch size of every batch
-    }
+
 
     batch_head[0] = 0;
     for (int i = 1; i < batch_count; i++){          //batch head corresponds to the start location of the first matrix for each batch
-      batch_head[i] = batch_size[i-1] + batch_head[i-1];    //calculate the batch head for each batch
+      batch_head[i] = batch_size[i-1] + batch_head[i-1];    //calculate the batch head for each batch by using the size and head of previous batch 
     }
 
     if (type == 0){
@@ -101,39 +121,13 @@ int main(int argc, char* argv[]) {
 
   }
   else if (type == 31){
-    // add code to handle parallel/no parallel, batch_count/batch_size, transA/transB
-    DenseMatrix <myType> a(m_, k_);
-    DenseMatrix <myType> b(k_, n_);
-    for (int i = 0; i < m_; i++){
-      for (int j = 0; j < k_; j++){
-        a.insert(i, j, getRandomValue<myType>(0, maxNum));      //insert random elements to a and b 
-      }
-    }
-    for (int i = 0; i < k_; i++){
-      for (int j = 0; j < n_; j++){
-        b.insert(i, j, getRandomValue<myType>(0, maxNum));
-      } 
-    }
-    // cout << a << endl;
-    // cout << b << endl;
-    DenseMatrix <myType> c;
-    double t0 = omp_get_wtime();
-    c = a * b;
-    double t1 = omp_get_wtime();
-    cout << t1 - t0 << endl;
-
+    performDenseMatrixOperations<myType>(m_, n_, k_, total_batch_size, parallel_, maxNum);
   }
-  else if (type == 32){
-    // add code to handle parallel/no parallel, batch_count/batch_size, transA/transB
-    SparseMatrix <myType> a(m_, k_, rand() % ((m_*k_)/2), maxNum);
-    SparseMatrix <myType> b(k_, n_, rand() % ((k_*n_)/2), maxNum);
-    SparseMatrix <myType> c;
-    // cout << a << endl;
-    // cout << b << endl;
-    double t0 = omp_get_wtime();
-    c = a * b;
-    double t1 = omp_get_wtime();
-    cout << t1 - t0 << endl;
+  else if (type == 32){ 
+    performSparseMatrixOperations<myType>(m_, n_, k_, total_batch_size, parallel_, maxNum);
+  }
+  else if (type == 41){
+    PerformCSRSparseBLASOperations<myType>(total_batch_size, m_, n_, k_, transA_, layout_, maxNum, parallel_);
   }
   return 0;
 }

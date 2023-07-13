@@ -1,11 +1,6 @@
 #ifndef DENSEMATRIX_H
 #define DENSEMATRIX_H
 
-#include <vector>
-#include <omp.h>
-#include <iostream>
-#include <quadmath.h>
-
 using namespace std;
 
 
@@ -16,9 +11,9 @@ class DenseMatrix{
             vector< vector< T > >  matrix_;
             int rows_;
             int cols_;
-
+            int parallel_;
         public:
-            DenseMatrix(int rows = 0, int cols = 0, const T& iniVal = 0);
+            DenseMatrix(int rows = 0, int cols = 0, int parallel = 0, const T& iniVal = 0);
 
             DenseMatrix(const DenseMatrix<T> & rhs);
 
@@ -57,24 +52,20 @@ class DenseMatrix{
             vector<T> operator*(const vector<T>& rhs);
 
             friend std::ostream& operator<<(std::ostream& os, const DenseMatrix<T>& M){
-                if constexpr(std::is_same_v<T, __float128>){
-    for (const auto& row : M.matrix_) {
-        for (const auto& element : row) {
-            char buffer[256];
-            quadmath_snprintf(buffer, sizeof(buffer), "%.10Qg", element);
-            std::cout << buffer << " ";
-        }
-        std::cout << std::endl;
-    }
-                }
-                else{
-                    for (int i = 0; i < M.getRows(); ++i) {
-                        for (int j = 0; j < M.getCols(); ++j) {
-                            os << M.matrix_[i][j] << ' ';   
+                for (int i = 0; i < M.getRows(); ++i) {
+                    for (int j = 0; j < M.getCols(); ++j) {
+                        if constexpr(is_same_v<T, MKL_F16>){
+                            os << h2f(M.matrix_[i][j]) << ' ';
                         }
+                        else if constexpr(is_same_v<T, boost::multiprecision::float128>){
+                            os.setf(std::ios_base::showpoint);
+                            os << setprecision(numeric_limits<boost::multiprecision::float128>::max_digits10) << M.matrix_[i][j] <<  ' ';
+                        }
+                        else
+                           os << M.matrix_[i][j] << ' ';   
+                    }
                     os << '\n';
-                    }   
-                }    
+                }     
                 return os;
             }
                 
@@ -89,10 +80,11 @@ class DenseMatrix{
 };
 
 template <typename T>
-DenseMatrix<T>::DenseMatrix(int rows, int cols, const T& iniVal){                     //resize DenseMatrix to [ROW][COL] of initial value, defaulted as 0
+DenseMatrix<T>::DenseMatrix(int rows, int cols, int parallel, const T& iniVal){                     //resize DenseMatrix to [ROW][COL] of initial value, defaulted as 0
     matrix_.resize(rows, vector<T>(cols, iniVal));
     rows_ = rows;
     cols_ = cols;
+    parallel_ = parallel;
 }
 
 template <typename T>
@@ -106,6 +98,7 @@ DenseMatrix<T>::DenseMatrix(const DenseMatrix<T>& rhs){
     }
     rows_ = rhs.rows_;
     cols_ = rhs.cols_;
+    parallel_ = rhs.parallel_;
 
 }
 
@@ -116,6 +109,7 @@ DenseMatrix<T>& DenseMatrix<T>::operator=(const DenseMatrix<T>& rhs) {
     std::swap(this->matrix_, copy.matrix_);
     std::swap(this->rows_, copy.rows_);
     std::swap(this->cols_, copy.cols_);
+    std::swap(this->parallel_, copy.parallel_);
     return *this;
 }
 
@@ -126,6 +120,7 @@ DenseMatrix<T>& DenseMatrix<T>::operator=(DenseMatrix<T>&& rhs) {
     std::swap(this->matrix_, rhs.matrix_);  // Swap the contents of the current DenseMatrix and the rhs DenseMatrix
     std::swap(this->rows_, rhs.rows_);
     std::swap(this->cols_,  rhs.cols_);
+    std::swap(this->parallel_, rhs.parallel_);
     rhs.rows_ = 0;
     rhs.cols_ = 0;
     return *this;
@@ -142,6 +137,7 @@ DenseMatrix<T>::DenseMatrix(DenseMatrix<T> && rhs){
     }
     rows_ = rhs.rows_;
     cols_ = rhs.cols_;
+    parallel_ = rhs.parallel_;
     rhs.rows_ = 0;
     rhs.cols_ = 0;
 
@@ -168,7 +164,11 @@ DenseMatrix<T> DenseMatrix<T> :: operator+(const DenseMatrix<T>& rhs){
         #pragma omp parallel for collapse(2)
         for (int i = 0; i < rows_; i++){
             for (int j = 0; j < cols_; j++){
-                resMatrix.matrix_[i][j] = matrix_[i][j] + rhs.matrix_[i][j];
+                if constexpr(is_same_v<T,MKL_F16>){
+                    resMatrix.matrix_[i][j] = f2h(h2f(matrix_[i][j]) + h2f(rhs.matrix_[i][j]));
+                }
+                else
+                    resMatrix.matrix_[i][j] = matrix_[i][j] + rhs.matrix_[i][j];
             }
         }
     }
@@ -183,7 +183,12 @@ DenseMatrix<T> &DenseMatrix<T> :: operator+=(const DenseMatrix<T>& rhs){
         #pragma omp parallel for collapse(2)
         for (int i = 0; i < rows_; i++){
             for (int j = 0; j < cols_; j++){
-                matrix_[i][j] += rhs.matrix_[i][j];
+                if constexpr(is_same_v<T,MKL_F16>){
+                    matrix_[i][j] = f2h(h2f(matrix_[i][j]) + h2f(rhs.matrix_[i][j]));
+                }
+                else{
+                    matrix_[i][j] += rhs.matrix_[i][j];
+                }
             }
         }
     }
@@ -200,7 +205,12 @@ DenseMatrix<T> DenseMatrix<T> :: operator-(const DenseMatrix<T>& rhs){
         #pragma omp parallel for collapse(2)
         for (int i = 0; i < rows_; i++){
             for (int j = 0; j < cols_; j++){
-                resMatrix.matrix_[i][j] = matrix_[i][j] - rhs.matrix_[i][j];
+                if constexpr(is_same_v<T,MKL_F16>){
+                    resMatrix.matrix_[i][j] = f2h(h2f(matrix_[i][j]) - h2f(rhs.matrix_[i][j]));
+                }
+                else{
+                    resMatrix.matrix_[i][j] = matrix_[i][j] - rhs.matrix_[i][j];
+                }
             }
         }
     }
@@ -216,7 +226,12 @@ DenseMatrix<T> &DenseMatrix<T> :: operator-=(const DenseMatrix<T>& rhs){
             #pragma omp parallel for collapse(2) 
             for (int i = 0; i < rows_; i++){
                 for (int j = 0; j < cols_; j++){
-                    matrix_[i][j] -= rhs.matrix_[i][j];
+                    if constexpr(is_same_v<T,MKL_F16>){
+                        matrix_[i][j] = f2h(h2f(matrix_[i][j]) - h2f(rhs.matrix_[i][j]));
+                    }
+                    else{
+                        matrix_[i][j] -= rhs.matrix_[i][j];
+                    }
                 }
             }
     }
@@ -231,24 +246,25 @@ DenseMatrix<T> DenseMatrix<T> :: operator*(const DenseMatrix<T>& rhs){
 
     DenseMatrix<T> resMatrix(rows_, rhs.cols_, 0); 
     if (cols_ == rhs.rows_){
-        #pragma omp parallel
-        {
             DenseMatrix<T> tempMatrix(rows_, rhs.cols_);
-            
-            #pragma omp for collapse(3)
-            for (int i = 0; i < rows_; i++) {
+            #pragma omp parallel for collapse(3) if (parallel_ == 1)                //standard 3 nested loop algorithm for matrix multiplication. if type is mkl_f16, convert to float and perform operation, then convert back
+            for (int i = 0; i < rows_; i++) {   
                 for (int j = 0; j < rhs.cols_; j++) {
                     for (int k = 0; k < cols_; k++) {
-                        tempMatrix.matrix_[i][j] += matrix_[i][k] * rhs.matrix_[k][j];
+                        if constexpr(is_same_v<T,MKL_F16>){
+                            tempMatrix.matrix_[i][j] = f2h(h2f(tempMatrix.matrix_[i][j]) + h2f(matrix_[i][k]) * h2f(rhs.matrix_[k][j]));
+                        }
+                        else{
+                            tempMatrix.matrix_[i][j] += matrix_[i][k] * rhs.matrix_[k][j];
+                        }
                     }
                 }
             }
             
-            #pragma omp critical
+            #pragma omp critical                 //append tempMatrix elements to resMatrix
             {
                 resMatrix += tempMatrix;
             }
-        }
     }
     else{
         cout << "Unable to proceed due to unmatching No. of Rows and Columns.\n";
@@ -287,7 +303,7 @@ const T& DenseMatrix<T> :: operator()(int row, int col) const{
 template <typename T>
 DenseMatrix<T> DenseMatrix <T> :: Transpose(){
     DenseMatrix<T> resMatrix(cols_, rows_);
-    #pragma omp for collapse(2)
+    #pragma omp for collapse(2)             //swap row and col on every value
     for (int i = 0; i < rows_; i++){
         for (int j = 0; j < cols_; j++){
             resMatrix.matrix_[j][i] = matrix_[i][j];
@@ -299,20 +315,30 @@ template <typename T>
 DenseMatrix<T> DenseMatrix<T> :: operator+(const T& rhs){
     DenseMatrix<T> resMatrix(rows_, cols_);
     #pragma omp for collapse(2)
-    for (int i = 0; i < rows_; i++){
+    for (int i = 0; i < rows_; i++){            //go through every entry and add it to rhs val
         for (int j = 0; j < cols_; j++){
-            resMatrix.matrix_[i][j] = matrix_[i][j] + rhs;
+            if constexpr(is_same_v<T,MKL_F16>){
+                resMatrix.matrix_[i][j] = f2h(h2f(matrix_[i][j])  + h2f(rhs));
+            }
+            else{
+                resMatrix.matrix_[i][j] = matrix_[i][j] + rhs;
+            }
         }
     }
     return resMatrix;
 }
 template <typename T>
 DenseMatrix<T> DenseMatrix<T> :: operator-(const T& rhs){
-    DenseMatrix<T> resMatrix(rows_, cols_);
+    DenseMatrix<T> resMatrix(rows_, cols_);         //same thing but subtract
     #pragma omp for collapse(2)
     for (int i = 0; i < rows_; i++){
         for (int j = 0; j < cols_; j++){
-            resMatrix.matrix_[i][j] = matrix_[i][j] - rhs;
+            if constexpr(is_same_v<T,MKL_F16>){
+                resMatrix.matrix_[i][j] = f2h(h2f(matrix_[i][j]) - h2f(rhs));;
+            }
+            else{
+                resMatrix.matrix_[i][j] = matrix_[i][j] - rhs;
+            }
         }
     }
     return resMatrix;
@@ -320,11 +346,16 @@ DenseMatrix<T> DenseMatrix<T> :: operator-(const T& rhs){
 
 template <typename T>
 DenseMatrix<T> DenseMatrix<T> :: operator*(const T& rhs){
-    DenseMatrix<T> resMatrix(rows_, cols_);
+    DenseMatrix<T> resMatrix(rows_, cols_);         //same thing but multiply
     #pragma omp for collapse(2)
     for (int i = 0; i < rows_; i++){
         for (int j = 0; j < cols_; j++){
-            resMatrix.matrix_[i][j] = matrix_[i][j] * rhs;
+            if constexpr(is_same_v<T,MKL_F16>){
+                resMatrix.matrix_[i][j] = f2h(h2f(matrix_[i][j]) * h2f(rhs));;
+            }
+            else{
+                resMatrix.matrix_[i][j] = matrix_[i][j] * rhs;
+            }
         }
     }
     return resMatrix;
@@ -332,23 +363,33 @@ DenseMatrix<T> DenseMatrix<T> :: operator*(const T& rhs){
 
 template <typename T>
 DenseMatrix<T> DenseMatrix<T> :: operator/(const T& rhs){
-    DenseMatrix<T> resMatrix(rows_, cols_);
+    DenseMatrix<T> resMatrix(rows_, cols_);         //same thing but for division
     #pragma omp for collapse(2)
     for (int i = 0; i < rows_; i++){
         for (int j = 0; j < cols_; j++){
-            resMatrix.matrix_[i][j] = matrix_[i][j] / rhs;
+            if constexpr(is_same_v<T,MKL_F16>){
+                resMatrix.matrix_[i][j] = f2h(h2f(matrix_[i][j]) / h2f(rhs));;
+            }
+            else{
+                resMatrix.matrix_[i][j] = matrix_[i][j] / rhs;
+            }
         }
     }
     return resMatrix;
 }
 template <typename T>
 vector<T> DenseMatrix<T> :: operator*(const vector<T>& rhs){
-    vector<T> resVector(rows_, 0);
+    vector<T> resVector(rows_, 0);          //standard vector multiplication with matrix algorithm
     if (rhs.size() == cols_){
-        #pragma omp for collapse(2)
+        #pragma omp parallel for collapse(2) if (parallel_ == 1)
         for (int i = 0; i < rows_; i++){
             for (int j = 0; j < cols_; j++){
-                resVector[i] += matrix_[i][j]* rhs[j];
+                if constexpr(is_same_v<T,MKL_F16>){
+                    resVector[i] = f2h(h2f(resVector[i]) + h2f(matrix_[i][j]) * h2f(rhs[j]));
+                }
+                else{
+                    resVector[i] += matrix_[i][j]* rhs[j];
+                }
             }
         }
     }   
