@@ -67,7 +67,8 @@ int main(int argc, char** argv) {
   
   if (PAPI_stop(EventSet, values) != PAPI_OK)
             handle_error(1);
-  cout<<"Values for rank "<<rank<<" Cyc: "<<values[0]<<", Ins: "<<values[1]<<", Br: "<<values[2]<<endl;
+  cout<<"Values for rank "<<rank<<" Cyc: "<<values[0]<<", Ins: "<<values[1]<<", Br: "<<values[2]<<
+	  " IPC: "<<real(values[1])/real(values[0])<<endl;
   MPI_Finalize();
 
   /*
