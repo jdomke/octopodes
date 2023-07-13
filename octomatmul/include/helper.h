@@ -1,10 +1,10 @@
 #ifndef RAND_GEN_H
 #define RAND_GEN_H
 
-#include <random>
-#include <type_traits>
-#include <limits>
-#include <mkl.h>
+// #include <random>
+// #include <type_traits>
+// #include <limits>
+// #include <mkl.h>
 
 using namespace std;
                   //below code segment taken from common_func.c which comes with the installation of Intel oneAPI Math Kernel Library for use with cblas_hgemm() function
@@ -98,6 +98,10 @@ T getRandomValue(T low, T high){
         std::uniform_real_distribution<float> dis(static_cast<float>(low), static_cast<float>(high));
         return f2h(dis(gen));
     }
+    else if constexpr (std::is_same_v<T, boost::multiprecision::float128>){
+      std::uniform_real_distribution<long double> dis(static_cast<long double>(low), static_cast<long double>(high));
+      return static_cast<boost::multiprecision::float128>(dis(gen));
+    }
     else if constexpr (std::is_integral<T>::value) {      //generate int values
         std::uniform_int_distribution<T> dis(low, high);
         return dis(gen);
@@ -107,5 +111,87 @@ T getRandomValue(T low, T high){
         return dis(gen);
     }
     return T(0.0);
+}
+template <typename T>
+struct CSRMatrix{
+  T** values;
+  int ** columns;
+  int ** rowPtr;
+  int * nonZeros;
+  int * nonZeroCount;
+
+  CSRMatrix(int total_batch_size){
+    nonZeros = new int[total_batch_size];        //CSR format with values, column, and row pointer
+    values = new T*[total_batch_size];
+    columns = new int*[total_batch_size];
+    rowPtr = new int*[total_batch_size];
+    nonZeroCount = new int[total_batch_size];
+  }
+};
+
+template <typename T>
+void ProcessCSRMatrix(CSRMatrix<T> &matrix, const int total_batch_size, const int m_, const int n_, const int maxNum){
+   for (int i = 0; i < total_batch_size; i++){
+      matrix.nonZeros[i] = (m_*n_) / 2;
+      matrix.values[i] = new T[matrix.nonZeros[i]];
+      matrix.columns[i] = new int[matrix.nonZeros[i]];
+      matrix.rowPtr[i] = new int[m_+1];
+      matrix.rowPtr[i][0] = 0;
+      matrix.nonZeroCount[i] = 0;
+      for (int j = 0; j < m_; j++){
+        for (int l = 0; l < n_; l++){
+            if ((matrix.nonZeroCount[i] < matrix.nonZeros[i]) && (getRandomValue<double>(0.0, 1.0) < 0.5)){
+              matrix.values[i][matrix.nonZeroCount[i]] = getRandomValue<T>(0, maxNum);      //generate random value, ensure that its a sparse matrix by generating a random double value betwween 0 to 1 and only taking anything below 0.5
+              matrix.columns[i][matrix.nonZeroCount[i]] = l;
+              matrix.nonZeroCount[i]++;
+          }
+        }
+        matrix.rowPtr[i][j+1] = matrix.nonZeroCount[i];
+      }
+   }
+}
+template <typename T>
+void obtainCSRandPrint(sparse_matrix_t mat, int m, int n){
+  MKL_INT * rows_start, *rows_end, *col_indx;
+  sparse_index_base_t index = SPARSE_INDEX_BASE_ZERO;
+  T * values;
+  mkl_sparse_s_export_csr(mat, &index, &m, &n, &rows_start, &rows_end, &col_indx, &values);
+    double denseC[m * n];
+    for (MKL_INT i = 0; i < m * n; i++) {
+        denseC[i] = 0.0;  // initialize element to 0
+    }
+
+    
+    for (MKL_INT i = 0; i < m; i++) {     //convert sparse matrix to dense matrix for output purposes when testing
+        for (MKL_INT j = rows_start[i]; j < rows_end[i]; j++) {
+            denseC[i * n + col_indx[j]] = values[j];
+        }
+    }
+
+    for (MKL_INT i = 0; i < m; i++) {       //print matrix 
+        for (MKL_INT j = 0; j < n; j++) {
+            printf("%f ", denseC[i * n + j]);
+        }
+        printf("\n");
+    }
+  cout << endl;
+}
+template <typename T>
+void generateDenseMatrix(const int layout, T* &matrix, const int rows, const int columns, const int maxNum)
+{
+  if (layout == 0){     //if row major
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < columns; ++j) {
+            matrix[i * columns + j] = getRandomValue<T>(0, maxNum);
+        }
+    }
+  }
+  else if (layout == 1){      //if column major
+    for (int j = 0; j < columns; ++j) {
+        for (int i = 0; i < rows; ++i) {
+            matrix[i + j * rows] = getRandomValue<T>(0, maxNum);
+        }
+    }
+  }
 }
 #endif

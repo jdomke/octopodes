@@ -2,10 +2,9 @@
 #define MY_BLAS_H
 
 // #include <cblas.h>
-#include <mkl.h>
-#include <omp.h>
-#include <type_traits>
-#include <iomanip>
+// #include <omp.h>
+// #include <type_traits>
+// #include <iomanip>
 
 template <typename T>
 void blas_batch_gemm(const int parallel, const int batch_count, const int* batch_size, const int* batch_head, const CBLAS_LAYOUT layout, const CBLAS_TRANSPOSE transA, const CBLAS_TRANSPOSE transB, const int* m, const int* n, const int* k, const T* alpha, const T* const * a, const int* lda, const T* const * b, const int* ldb, const T* beta, T** c, const int* ldc){
@@ -165,5 +164,146 @@ void ProcessVariablesandPerformBLAS(const int parallel_, int *m, int* n, int* k,
     free(y);
     free(alpha);
     free(beta);
+}
+
+template <typename T>
+void PerformCSRSparseBLASOperations(const int total_batch_size, const int m_, const int n_, const int k_,  const int transA_, const int layout_, const int maxNum, const int parallel_){
+    int aRow = m_, aCol = k_, a2Row = k_, a2Col = n_;
+    sparse_operation_t opr;
+    opr = transA_ == 0 ? SPARSE_OPERATION_NON_TRANSPOSE : SPARSE_OPERATION_TRANSPOSE;     //transpose if transA is 1, otherwise don't
+    CSRMatrix<T> m1(total_batch_size);
+    ProcessCSRMatrix(m1, total_batch_size, m_, k_, maxNum);
+    CSRMatrix<T> m2(total_batch_size);
+    ProcessCSRMatrix(m2, total_batch_size, a2Row, a2Col, maxNum);
+    T **b = new T*[total_batch_size];
+    T **c = new T*[total_batch_size];
+    struct matrix_descr descrA;
+    descrA.type = SPARSE_MATRIX_TYPE_GENERAL;       //type general means the matrix will be processed as is
+
+    sparse_layout_t layout_b;
+    layout_b = layout_ == 0 ? SPARSE_LAYOUT_ROW_MAJOR : SPARSE_LAYOUT_COLUMN_MAJOR;     //column or row major depending on layout
+
+    int ldb, ldc, bRow, bCol, cRow, cCol;
+    if (layout_b == SPARSE_LAYOUT_COLUMN_MAJOR){          //set row and col for b and c based on the operation and layout
+      if (opr == SPARSE_OPERATION_NON_TRANSPOSE){
+        bRow = ldb = k_;
+        cRow = ldc = m_;
+      }
+      else{
+        bRow = ldb = m_;
+        cRow = ldc = k_;
+      }
+      bCol = n_;
+      cCol = n_;
+    }
+    else if (layout_b == SPARSE_LAYOUT_ROW_MAJOR){
+      if (opr == SPARSE_OPERATION_NON_TRANSPOSE){
+        bRow = aCol;
+        cRow = aRow;
+      }
+      else{
+        bRow = aRow;
+        cRow = aCol;
+      }
+      bCol = ldb = n_;
+      cCol = ldc = n_;
+    }
+    for (int i = 0; i < total_batch_size; i++){       //allocate space and randomly generate dense matrix B, dense matrix C is used to store the results
+      b[i] = (T*)mkl_malloc(bRow * bCol * sizeof(T), 256);
+      c[i] = (T*)mkl_malloc(cRow * cCol * sizeof(T), 256);
+      generateDenseMatrix(layout_, b[i], bRow, bCol, maxNum);
+    }
+    sparse_matrix_t* a = new sparse_matrix_t[total_batch_size];
+    sparse_matrix_t* a2 = new sparse_matrix_t[total_batch_size];
+    sparse_matrix_t* resMatrix = new sparse_matrix_t[total_batch_size];
+    for (int i = 0; i < total_batch_size; i++){     //create csr handle (no half or quadruple precision supported from MKL)
+      if constexpr(is_same_v<T, float>){
+        mkl_sparse_s_create_csr(&a[i], SPARSE_INDEX_BASE_ZERO, aRow, aCol, m1.rowPtr[i], m1.rowPtr[i]+1, m1.columns[i], m1.values[i]);
+        mkl_sparse_s_create_csr(&a2[i], SPARSE_INDEX_BASE_ZERO, a2Row, a2Col, m2.rowPtr[i], m2.rowPtr[i]+1, m2.columns[i], m2.values[i]);
+      }
+      else if constexpr(is_same_v<T, double>){
+        mkl_sparse_d_create_csr(&a[i], SPARSE_INDEX_BASE_ZERO, aRow, aCol, m1.rowPtr[i], m1.rowPtr[i]+1, m1.columns[i], m1.values[i]);
+        mkl_sparse_d_create_csr(&a2[i], SPARSE_INDEX_BASE_ZERO, a2Row, a2Col, m2.rowPtr[i], m2.rowPtr[i]+1, m2.columns[i], m2.values[i]);
+      }
+    }
+    
+    double t0 = omp_get_wtime();
+    #pragma omp parallel for if (parallel_ == 1)
+    for (int i = 0; i < total_batch_size; i++){         //run sparse x dense matrix multiplication 
+      if constexpr(is_same_v<T, float>){
+        mkl_sparse_s_mm(opr, 1.0, a[i], descrA, layout_b, b[i], cCol, ldb, 0.0, c[i], ldc);
+      }
+      else if constexpr(is_same_v<T, double>){
+        mkl_sparse_d_mm(opr, 1.0, a[i], descrA, layout_b, b[i], cCol, ldb, 0.0, c[i], ldc);
+      }
+    }
+    // obtainCSRandPrint<T>(a[0], aRow, aCol);
+    // if (layout_ == 1){
+    // for (int i = 0; i < bRow; i++) {
+    //     for (int j = 0; j < bCol; j++) {
+    //         std::cout << b[0][j * bRow + i] << " ";
+    //     }
+    //     std::cout << std::endl;
+    // }
+    // cout << endl;
+    //   for (int i = 0; i < cRow; i++) {
+    //       for (int j = 0; j < cCol; j++) {
+    //           std::cout << c[0][j * cRow + i] << " ";
+    //       }
+    //       std::cout << std::endl;
+    //   }
+    // }
+    // else if (layout_ == 0){
+    //   for (int i = 0; i < bRow; i++) {
+    //     for (int j = 0; j < bCol; j++) {
+    //         std::cout << b[0][i * bCol + j] << " ";
+    //     }
+    //     std::cout << std::endl;
+    // }
+    // cout << endl;
+    //   for (int i = 0; i < cRow; i++) {
+    //     for (int j = 0; j < cCol; j++) {
+    //         std::cout << c[0][i * cCol + j] << " ";
+    //     }
+    //     std::cout << std::endl;
+    // }
+    // }
+    double t1 = omp_get_wtime();
+    cout << "time for sparse matrix * dense matrix operation: " <<  t1 - t0 << endl;
+    
+    t0 = omp_get_wtime();
+    #pragma omp parallel for if (parallel_ == 1)
+    for (int i = 0; i < total_batch_size; i++){
+      mkl_sparse_spmm(opr, a[i], a2[i], &resMatrix[i]);
+    }
+    t1 = omp_get_wtime();
+    cout << "Time for sparse matrix * sparse matrix operation: " << t1 - t0 << endl;
+  
+    // obtainCSRandPrint<T>(a[0], aRow, aCol);
+    // obtainCSRandPrint<T>(a2[0], a2Row, a2Col);
+    // obtainCSRandPrint<T>(resMatrix[0], aRow, aCol);
+    for (int j = 0; j < total_batch_size; j++){
+      mkl_sparse_destroy(a[j]);
+      mkl_sparse_destroy(a2[j]);
+      mkl_sparse_destroy(resMatrix[j]);
+      mkl_free(c[j]);
+      mkl_free(b[j]);
+      delete [] m1.values[j];
+      delete [] m1.columns[j];
+      delete [] m1.rowPtr[j];
+      delete [] m2.values[j];
+      delete [] m2.columns[j];
+      delete [] m2.rowPtr[j];
+    }
+    delete [] m2.values;
+    delete [] m2.columns;
+    delete [] m2.rowPtr;
+    delete [] m1.values;
+    delete [] m1.columns;
+    delete [] m1.rowPtr;
+    delete [] m1.nonZeros;
+    delete [] m1.nonZeroCount;
+    delete [] m2.nonZeros;
+    delete [] m2.nonZeroCount;
 }
 #endif  
