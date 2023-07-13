@@ -23,6 +23,9 @@ find_package(MPI REQUIRED)
 #find_library(LIBCONFIG_LOCATION libconfig)
 find_library(libconfig libconfig)
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+find_package(PAPI REQUIRED)
+include_directories(${PAPI_INCLUDE_DIRS})
+
 
 add_executable(main main.cpp
     #src/driver.cpp
@@ -47,7 +50,7 @@ add_executable(main main.cpp
 # endif() 
 #add_compile_options(-lconfig++)
 #add_compile_options(-lconfig)
-target_link_libraries(main "${TORCH_LIBRARIES}" OpenMP::OpenMP_CXX MPI::MPI_CXX config++ config) 
+target_link_libraries(main "${TORCH_LIBRARIES}" OpenMP::OpenMP_CXX MPI::MPI_CXX config++ config ${PAPI_LIBRARIES}) 
 #add_compile_options(-openmp -lpthread)
 #target_link_options(main PUBLIC ${OpenMP_CXX_FLAGS})
 

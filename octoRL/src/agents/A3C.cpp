@@ -24,9 +24,9 @@ octorl::A3C::A3C(std::shared_ptr<octorl::EnvironmentsBase> environment, size_t b
     time_steps = ep_count;
     t = 0;
     entropy_param = 0.0001;
-    if (torch::cuda::is_available()) {                                                                                                                                                                                     std::cout << "CUDA is available! Training on GPU." << std::endl;                                                                                                                                           
+   /* if (torch::cuda::is_available()) {                                                                                                                                                                                     std::cout << "CUDA is available! Training on GPU." << std::endl;                                                                                                                                           
         device = torch::kCUDA;                                                                                                                                                                                     
-    }   
+    }*/   
 
     critic = policy_model;
     actor = actor_model;

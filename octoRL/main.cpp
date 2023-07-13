@@ -17,81 +17,57 @@
 #include "mpi.h"
 #include "include/configure.hpp"
 #include <map>
+#include <papi.h>
+#include <cstring>
 //#include "include/Mlp.hpp"
 
 
 using namespace libconfig;
 using namespace std;
 
-void configTest() {
-
-map<std::string, octorl::layer_type> layer_map {
-        {"linear",octorl::linear},
-        {"conv2d", octorl::conv2d},
-        {"max_pool_2d", octorl::max_pool_2d},
-        {"flatten", octorl::flatten}};
-
-map<std::string, octorl::activation_type> activation_map {
-        {"relu",octorl::relu},
-        {"softmax", octorl::softmax},
-        {"none", octorl::none}};
-
-Config cfg;
-
-cfg.readFile("../configs/a2c.cfg");
-const Setting& root = cfg.getRoot();
-
-cout<< root.exists("a2c")<<endl;
-const Setting& agent = root["a2c"]["actor"];
-
-vector<octorl::LayerInfo> act_layer_info;
-for(int i = 0; i < agent.getLength(); i++) {
-  string type, activation, label;
-  int input, output;
-  const Setting& layer = agent[i];
-
-  type = (const char *)layer.lookup("type");
-  activation = (const char *)layer.lookup("activation");
-  label = (const char *)layer.lookup("label");
-  layer.lookupValue("input", input);
-  layer.lookupValue("output", output);
-  
-  cout<<type<<" "<<activation<<" "<<label<<" "<<input<<" "<<output<<endl;
-  cout<<layer_map[type]<<endl;
-  act_layer_info.push_back(octorl::LayerInfo(layer_map[type], activation_map[activation],
-    label, input, output));
-
-  octorl::Policy anet(act_layer_info);
-  cout<<anet<<endl;
-}
-
-// cfg.readFile("../configs/test.cfg");
-// string title, author;
-// const char *var3;
-// double price;
-// int qty;
-
-// const Setting& root = cfg.getRoot();
-
-// const Setting &books = root["inventory"]["books"];
-// const Setting &book = books[0];
-// //cout<<book.lookupValue("title",var3)<<endl;
-
-// title = (const char *)book.lookup("title");
-// cout<<root["inventory"].exists("flid")<<endl;
-// cout<<title<<endl;
-
+void handle_error (int retval)
+{
+     printf("PAPI error %d: %s\n", retval, PAPI_strerror(retval));
+     exit(1);
 }
 
 
 int main(int argc, char** argv) {
   int numranks, rank, comm_sz;
   MPI_Init(&argc, &argv);
-  
-  //cout<<argv[1]<<endl;
-  //configureAndRun("../configs/dqn.cfg");
+  MPI_Comm_size(MPI_COMM_WORLD, &numranks);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  int retval, EventSet = PAPI_NULL;
+	int Events[3] = {PAPI_TOT_CYC, PAPI_TOT_INS, PAPI_BR_INS};
+	long_long values[3];
+
+	/* Initialize the PAPI library */
+	retval = PAPI_library_init(PAPI_VER_CURRENT);
+
+	if (retval != PAPI_VER_CURRENT) {
+	  fprintf(stderr, "PAPI library init error!\n");
+	  exit(1);
+	}
+
+	/* Create the Event Set */
+	if (PAPI_create_eventset(&EventSet) != PAPI_OK)
+	    handle_error(1);
+
+	/* Add Total Instructions Executed to our EventSet */
+	if (PAPI_add_events(EventSet, Events, 3) != PAPI_OK)
+	    handle_error(1);
+
+	/* Start counting */
+	if (PAPI_start(EventSet) != PAPI_OK)
+	    handle_error(1);
+ 
+
   if(argc >= 2)
     configureAndRun(argv[1]);
+  
+  if (PAPI_stop(EventSet, values) != PAPI_OK)
+            handle_error(1);
+  cout<<"Values for rank "<<rank<<" Cyc: "<<values[0]<<", Ins: "<<values[1]<<", Br: "<<values[2]<<endl;
   MPI_Finalize();
 
   /*

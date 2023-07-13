@@ -16,9 +16,9 @@ octorl::DqnAsync::DqnAsync(std::shared_ptr<octorl::EnvironmentsBase> environment
     batch_freq = freq;
     epochs = ep_count;
     target_model = policy_model;//std::make_shared<octorl::Policy>(*policy_model);
-    if (torch::cuda::is_available()) {                                                                                                                                                                                     std::cout << "CUDA is available! Training on GPU." << std::endl;                                                                                                                                           
+   /* if (torch::cuda::is_available()) {                                                                                                                                                                                     std::cout << "CUDA is available! Training on GPU." << std::endl;                                                                                                                                           
         device = torch::kCUDA;                                                                                                                                                                                     
-    }         
+    }*/         
     octorl::loadstatedict2(target_model,policy_model);
     octorl::loadstatedict2(model,policy_model);
     learning_rate = lr;
@@ -61,7 +61,6 @@ void octorl::DqnAsync::test() {
 }
 
 void octorl::DqnAsync::run() {
-    std::cout<<"running\n";
     if(rank == 0) {
         //std::vector<std::pair<int,int>> to_send;
         for(int i =1; i < numranks; i++) {

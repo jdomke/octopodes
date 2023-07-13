@@ -16,7 +16,6 @@ map<string, octorl::activation_type> activation_map {
         {"none", octorl::none}};
 
 void configureAndRun(const char* file) {
-    cout<<"Running training detailed in "<<file<<endl;
     Config cfg;
     cfg.readFile(file);
 
