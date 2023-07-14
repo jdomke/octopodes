@@ -17,7 +17,7 @@
 #include "mpi.h"
 #include "include/configure.hpp"
 #include <map>
-//#include <papi.h>
+#include <papi.h>
 #include <cstring>
 //#include "include/Mlp.hpp"
 
@@ -37,38 +37,38 @@ int main(int argc, char** argv) {
   MPI_Init(&argc, &argv);
   MPI_Comm_size(MPI_COMM_WORLD, &numranks);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  // int retval, EventSet = PAPI_NULL;
-	// int Events[3] = {PAPI_TOT_CYC, PAPI_TOT_INS, PAPI_BR_INS};
-	// long_long values[3];
+  int retval, EventSet = PAPI_NULL;
+	int Events[3] = {PAPI_TOT_CYC, PAPI_TOT_INS, PAPI_BR_INS};
+	long_long values[3];
 
-	// /* Initialize the PAPI library */
-	// retval = PAPI_library_init(PAPI_VER_CURRENT);
+	/* Initialize the PAPI library */
+	retval = PAPI_library_init(PAPI_VER_CURRENT);
 
-	// if (retval != PAPI_VER_CURRENT) {
-	//   fprintf(stderr, "PAPI library init error!\n");
-	//   exit(1);
-	// }
+	if (retval != PAPI_VER_CURRENT) {
+	  fprintf(stderr, "PAPI library init error!\n");
+	  exit(1);
+	}
 
-	// /* Create the Event Set */
-	// if (PAPI_create_eventset(&EventSet) != PAPI_OK)
-	//     handle_error(1);
+	/* Create the Event Set */
+	if (PAPI_create_eventset(&EventSet) != PAPI_OK)
+	    handle_error(1);
 
-	// /* Add Total Instructions Executed to our EventSet */
-	// if (PAPI_add_events(EventSet, Events, 3) != PAPI_OK)
-	//     handle_error(1);
+	/* Add Total Instructions Executed to our EventSet */
+	if (PAPI_add_events(EventSet, Events, 3) != PAPI_OK)
+	    handle_error(1);
 
-	// /* Start counting */
-	// if (PAPI_start(EventSet) != PAPI_OK)
-	//     handle_error(1);
+	/* Start counting */
+	if (PAPI_start(EventSet) != PAPI_OK)
+	    handle_error(1);
  
 
   if(argc >= 2)
     configureAndRun(argv[1]);
   
-  // if (PAPI_stop(EventSet, values) != PAPI_OK)
-  //           handle_error(1);
-  // cout<<"Values for rank "<<rank<<" Cyc: "<<values[0]<<", Ins: "<<values[1]<<", Br: "<<values[2]<<
-	//   " IPC: "<<real(values[1])/real(values[0])<<endl;
+  if (PAPI_stop(EventSet, values) != PAPI_OK)
+            handle_error(1);
+  cout<<"Values for rank "<<rank<<" Cyc: "<<values[0]<<", Ins: "<<values[1]<<", Br: "<<values[2]<<
+	  " IPC: "<<real(values[1])/real(values[0])<<endl;
   MPI_Finalize();
 
   /*
