@@ -35,14 +35,18 @@ namespace octorl {
             void run();
             std::vector<actor> actors;
             bool sendModel(int r);
+            bool broadcastModel();
             bool recvModel();
+            bool recvBroadcastModel();
             int action(torch::Tensor state);
             bool sendBatch(int done);
             std::pair<int,int> recvBatch();
             void test();
             int recvBatchAndTrain();
             void sendKeepRunning(bool run, int dst);
+            void broadcastKeepRunning(bool run);
             bool recvKeepRunning();
+            bool recvBroadcastKeepRunning();
             void pushToBuffer(Memory m);
             float trainOnBatch(std::vector<Memory> batch);
             void updateTarget();

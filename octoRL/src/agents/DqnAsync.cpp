@@ -63,10 +63,14 @@ void octorl::DqnAsync::test() {
 void octorl::DqnAsync::run() {
     if(rank == 0) {
         //std::vector<std::pair<int,int>> to_send;
-        for(int i =1; i < numranks; i++) {
-            sendModel(i);
-            sendKeepRunning(true,i);
-        }
+
+        MPI_Barrier(MPI_COMM_WORLD);
+        broadcastModel();
+        broadcastKeepRunning(true);
+        // for(int i =1; i < numranks; i++) {
+        //     sendModel(i);
+        //     sendKeepRunning(true,i);
+        // }
         for(int g = 0; g < epochs; g++) {
         std::vector<int> to_send;
         
@@ -74,10 +78,13 @@ void octorl::DqnAsync::run() {
             recvBatchAndTrain();
         }
         updateTarget();
-        for(int i =1; i < numranks; i++) {
-            sendModel(i);
-            sendKeepRunning(true,i);
-        }
+        MPI_Barrier(MPI_COMM_WORLD);
+        broadcastModel();
+        broadcastKeepRunning(true);
+        // for(int i =1; i < numranks; i++) {
+        //     sendModel(i);
+        //     sendKeepRunning(true,i);
+        // }
         if(g % 100 == 0) {
             std::cout<<"Epoch: "<<g<<std::endl;
             test();
@@ -85,21 +92,23 @@ void octorl::DqnAsync::run() {
         //std::cout<<"models sent\n";
         }
         
-        // this can be improved
+        MPI_Barrier(MPI_COMM_WORLD);
+        broadcastModel();
+        broadcastKeepRunning(false);
 
-        for(int i =1; i < numranks; i++) {
-           //std::cout<<"sending break message\n";
-            sendModel(i);
-            sendKeepRunning(false,i);
-        }
+        // for(int i =1; i < numranks; i++) {
+        //    //std::cout<<"sending break message\n";
+        //     sendModel(i);
+        //     sendKeepRunning(false,i);
+        // }
         
 
     }
     else {
-
-        recvModel();
+        MPI_Barrier(MPI_COMM_WORLD);
+        recvBroadcastModel();
         int g = 0;
-        while(recvKeepRunning()){//for(int g = 0; g < epochs; g++) {
+        while(recvBroadcastKeepRunning()){//for(int g = 0; g < epochs; g++) {
             torch::Tensor init_obs = env->reset().observation;
             
             auto act = action(init_obs);
@@ -121,7 +130,8 @@ void octorl::DqnAsync::run() {
             epsilon = std::max(epsilon, epsilon_min);
            // std::cout<<"Rank "<<rank<<" reward: "<<running_reward<<" G:"<<g++<<std::endl;
             sendBatch(obs.done);
-            recvModel();
+            MPI_Barrier(MPI_COMM_WORLD);
+            recvBroadcastModel();
         }
         //std::cout<<rank<<" breaking\n";
     }
@@ -132,9 +142,19 @@ void octorl::DqnAsync::sendKeepRunning(bool run, int dst) {
     MPI_Send(&run, 1, MPI_C_BOOL, dst, octorl::keep_running_tag, MPI_COMM_WORLD);
 }
 
+void octorl::DqnAsync::broadcastKeepRunning(bool run) {
+    MPI_Bcast(&run, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
+}
+
 bool octorl::DqnAsync::recvKeepRunning() {
     bool kr;
     MPI_Recv(&kr, 1, MPI_C_BOOL, 0, octorl::keep_running_tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    return kr;
+}
+
+bool octorl::DqnAsync::recvBroadcastKeepRunning() {
+    bool kr;
+    MPI_Bcast(&kr, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
     return kr;
 }
 
@@ -155,6 +175,24 @@ bool octorl::DqnAsync::sendModel(int r) {
     model.serialize(buffer);
     
     MPI_Send(buffer, model.getElementCount(), MPI_FLOAT, r, octorl::model_tag, MPI_COMM_WORLD);
+    delete[] buffer;
+    return true;
+}
+
+bool octorl::DqnAsync::broadcastModel() {
+    float *buffer = new float[model.getElementCount()];    
+    model.serialize(buffer);
+    
+    MPI_Bcast(buffer, model.getElementCount(), MPI_FLOAT, 0, MPI_COMM_WORLD);
+    delete[] buffer;
+    return true;
+}
+
+bool octorl::DqnAsync::recvBroadcastModel() {
+    float *buffer = new float[model.getElementCount()];    
+    
+    MPI_Bcast(buffer, model.getElementCount(), MPI_FLOAT, 0, MPI_COMM_WORLD);
+    model.loadFromSerial(buffer);
     delete[] buffer;
     return true;
 }
