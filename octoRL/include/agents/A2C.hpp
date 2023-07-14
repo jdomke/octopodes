@@ -32,9 +32,15 @@ namespace octorl {
             bool workerRun();
             bool sendCriticModel(int r);
             bool sendActorModel(int r);
+            bool broadcastActorModel();
+            bool broadcastCriticModel();
+            bool recvBroadcastActorModel();
+            bool recvBroadcastCriticModel();
             bool recvCriticModel();
             bool recvActorModel();
             void sendKeepRunning(bool run, int dst);
+            void broadcastKeepRunning(bool run);
+            bool recvBroadcastKeepRunning();
             bool recvKeepRunning();
             void recvBatch();
             void sendBatch();

@@ -68,22 +68,29 @@ void octorl::A2C::test() {
 
 void octorl::A2C::run() {
     if(rank == 0) {
+        MPI_Barrier(MPI_COMM_WORLD); 
+        broadcastActorModel();
+        broadcastCriticModel();
         learnerRun();
         test();
     }
     else {
-        recvActorModel();
-        recvCriticModel();
+        MPI_Barrier(MPI_COMM_WORLD); 
+        recvBroadcastActorModel();
+        recvBroadcastCriticModel();
+        // recvActorModel();
+        // recvCriticModel();
         while(workerRun()){}
         std::cout<<rank<<" done running\n";
     }
 }
 
 void octorl::A2C::learnerRun() {
-    for(int i =1; i < num_ranks; i++) {
+    /*for(int i =1; i < num_ranks; i++) {
         sendActorModel(i);
         sendCriticModel(i);
-    }
+    }*/
+    
     for(int e = 0; e < episodes; e++) {
         for(int i = 1; i < num_ranks; i++)
             recvBatch();
@@ -92,14 +99,21 @@ void octorl::A2C::learnerRun() {
             std::cout<<"Epoch: "<<e<<std::endl;
             test();
         }
-        for(int i = 1; i < num_ranks; i++) {
-            sendActorModel(i);
-            sendCriticModel(i);
-            if(e+1 < episodes)
-                sendKeepRunning(true,i);
-            else
-                sendKeepRunning(false,i);
-        }
+        MPI_Barrier(MPI_COMM_WORLD); 
+        broadcastActorModel();
+        broadcastCriticModel();
+        if(e+1 < episodes)
+            broadcastKeepRunning(true);
+        else
+            broadcastKeepRunning(false);
+        // for(int i = 1; i < num_ranks; i++) {
+        //     sendActorModel(i);
+        //     sendCriticModel(i);
+        //     if(e+1 < episodes)
+        //         sendKeepRunning(true,i);
+        //     else
+        //         sendKeepRunning(false,i);
+        // }
 
     }
 }
@@ -132,8 +146,11 @@ bool octorl::A2C::workerRun() {
     // need to calculate q_val
     if(local_memory.size() >= local_memory_size) {
         sendBatch();
-        recvActorModel();
-        recvCriticModel();
+        MPI_Barrier(MPI_COMM_WORLD); 
+        recvBroadcastActorModel();
+        recvBroadcastCriticModel();
+        // recvActorModel();
+        // recvCriticModel();
         memory.clear();
         local_memory.clear();
     }
@@ -141,7 +158,7 @@ bool octorl::A2C::workerRun() {
         return true;
     
 
-    return recvKeepRunning();
+    return recvBroadcastKeepRunning();
     
 }
 
@@ -261,8 +278,39 @@ bool octorl::A2C::sendCriticModel(int r) {
 bool octorl::A2C::sendActorModel(int r) {
     float *buffer = new float[actor.getElementCount()];    
     actor.serialize(buffer);
-    MPI_Send(buffer, actor.getElementCount(), MPI_FLOAT, r, octorl::model_tag, MPI_COMM_WORLD);
+    MPI_Send(buffer, actor.getElementCount(), MPI_FLOAT, r,  octorl::model_tag, MPI_COMM_WORLD);
 
+    delete[] buffer;
+    return true;
+}
+
+bool octorl::A2C::broadcastCriticModel() {
+    float *buffer = new float[critic.getElementCount()];    
+    critic.serialize(buffer);
+    MPI_Bcast(buffer, critic.getElementCount(), MPI_FLOAT, 0, MPI_COMM_WORLD);
+    delete[] buffer;
+    return true;
+}
+bool octorl::A2C::broadcastActorModel() {
+    float *buffer = new float[actor.getElementCount()];    
+    actor.serialize(buffer);
+    MPI_Bcast(buffer, actor.getElementCount(), MPI_FLOAT, 0, MPI_COMM_WORLD);
+    delete[] buffer;
+    return true;
+}
+
+bool octorl::A2C::recvBroadcastCriticModel() {
+    float *buffer = new float[critic.getElementCount()];    
+    MPI_Bcast(buffer, critic.getElementCount(), MPI_FLOAT, 0, MPI_COMM_WORLD);
+    critic.loadFromSerial(buffer);
+    delete[] buffer;
+    return true;
+}
+
+bool octorl::A2C::recvBroadcastActorModel() {
+    float *buffer = new float[actor.getElementCount()];    
+    MPI_Bcast(buffer, actor.getElementCount(), MPI_FLOAT, 0, MPI_COMM_WORLD);
+    actor.loadFromSerial(buffer);
     delete[] buffer;
     return true;
 }
@@ -287,6 +335,16 @@ bool octorl::A2C::recvActorModel() {
 }
 void octorl::A2C::sendKeepRunning(bool run, int dst) {
     MPI_Send(&run, 1, MPI_C_BOOL, dst, octorl::keep_running_tag, MPI_COMM_WORLD);
+}
+
+void octorl::A2C::broadcastKeepRunning(bool run) {
+    MPI_Bcast(&run, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
+}
+
+bool octorl::A2C::recvBroadcastKeepRunning() {
+    bool run;
+    MPI_Bcast(&run, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
+    return run;
 }
 
 bool octorl::A2C::recvKeepRunning() {
