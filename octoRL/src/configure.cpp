@@ -20,7 +20,6 @@ void configureAndRun(const char* file) {
     cfg.readFile(file);
 
     const Setting& root = cfg.getRoot();
-    
     if(root.exists("a2c")) {
         a2cConfigureAndRun(root); }
     else if(root.exists("a3c")) {
@@ -38,7 +37,7 @@ void a2cConfigureAndRun(const Setting& root) {
 
     octorl::Policy actor_net = modelParse(actor);
     octorl::Policy critic_net = modelParse(critic);
-
+    
     int rank, numranks, buffer_size = 100000, episode_count = 500, seed = 29384, batch = 32;
     float learning_rate = 0.001, gamma = 0.99;
     string env =(const char *) root.lookup("environment");
@@ -59,6 +58,11 @@ void a2cConfigureAndRun(const Setting& root) {
     }
     else if(env == "CARTPOLE") {
         octorl::A2C async(make_shared<octorl::Cartpole>(), buffer_size, critic_net, actor_net, gamma, episode_count,
+            seed, learning_rate, batch, rank, numranks);
+        async.run();
+    }
+    else if(env == "CNNTEST") {
+        octorl::A2C async(make_shared<octorl::CNNTest>(), buffer_size, critic_net, actor_net, gamma, episode_count,
             seed, learning_rate, batch, rank, numranks);
         async.run();
     }
@@ -94,6 +98,11 @@ void a3cConfigureAndRun(const libconfig::Setting& root) {
     }
     else if(env == "CARTPOLE") {
         octorl::A3C async(make_shared<octorl::Cartpole>(), buffer_size, critic_net, actor_net, gamma, episode_count,
+            seed, learning_rate, batch, rank, numranks);
+        async.run();
+    }
+    else if(env == "CNNTEST") {
+        octorl::A3C async(make_shared<octorl::CNNTest>(), buffer_size, critic_net, actor_net, gamma, episode_count,
             seed, learning_rate, batch, rank, numranks);
         async.run();
     }
@@ -136,6 +145,11 @@ void dqnAsyncConfigureAndRun(const libconfig::Setting& root) {
             episode_count, seed, learning_rate, batch, batch_freq,rank, numranks); 
         async.run();
     }
+    else if(env == "CNNTEST") {
+        octorl::DqnAsync async(make_shared<octorl::CNNTest>(), buffer_size, policy_net, gamma, epsilon, decay, epsilon_min, 
+            episode_count, seed, learning_rate, batch, batch_freq,rank, numranks); 
+        async.run();
+    }
 
 }
 
@@ -143,7 +157,7 @@ octorl::LayerInfo layerParse(const Setting& layer) {
     octorl::layer_type type;
     octorl::activation_type activation;
     string  label;
-    int input, output, kernel_size = 1, padding = 1, dilation = 1;
+    int input = 1, output = 1, kernel_size = 1, stride = 1, padding = 0, dilation = 1;
 
     type = layer_map[(const char *)layer.lookup("type")];
     activation = activation_map[(const char *)layer.lookup("activation")];
@@ -154,13 +168,14 @@ octorl::LayerInfo layerParse(const Setting& layer) {
     //if(layer.exists("kernel_size"))
     layer.lookupValue("kernel_size", kernel_size);
     
+    layer.lookupValue("stride", stride);
     //if(layer.exists("padding"))
-    layer.lookupValue("padding", kernel_size);
+    layer.lookupValue("padding", padding);
     
     //if(layer.exists("dilation"))
-    layer.lookupValue("dilation", kernel_size);
+    layer.lookupValue("dilation", dilation);
     
-    return octorl::LayerInfo(type, activation, label, input, output, kernel_size, padding, dilation);
+    return octorl::LayerInfo(type, activation, label, input, output, kernel_size, stride, padding, dilation);
 }
 
 octorl::Policy modelParse(const Setting& model){

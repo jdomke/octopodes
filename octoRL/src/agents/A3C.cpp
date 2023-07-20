@@ -53,7 +53,7 @@ void octorl::A3C::test() {
         int act;
         while(!obs.done) {
     	    init_obs = obs.observation;
-	    act = action(obs.observation);
+	        act = action(obs.observation);
             obs = env->step(act);
             rewards += obs.reward;
             avg_reward += obs.reward;
@@ -115,12 +115,12 @@ void octorl::A3C::globalNetworkRun() {
 bool octorl::A3C::workerRun() {
     t_start = t;
     auto init_obs = env->getState();
-   
 
     auto act = action(init_obs);
     auto obs = env->step(act);
 
     actor_memory.push_back(octorl::ActorMemory(init_obs, critic.forward(init_obs).to(device).detach(), act, env->getActionSize(), obs.reward, obs.done));
+
     t++;
     int steps = 1;
      while(!obs.done) {
@@ -229,6 +229,7 @@ void octorl::A3C::recvActorGradientAndStep(int src) {
     MPI_Recv(buffer, actor.getElementCount(), MPI_FLOAT, src, octorl::gradient_tag,MPI_COMM_WORLD, &status);
     //int num_steps = (int) buffer[0];
     actor.applyGradient(buffer);
+    
     actor_optimizer->step();
 }
 
@@ -255,7 +256,6 @@ bool octorl::A3C::recvKeepRunning() {
 
 int octorl::A3C::action(torch::Tensor state) {
    
-    //torch::Tensor out = actor.forward(state).to(device).contiguous();
     torch::Tensor out = actor.forward(state).contiguous();
 
     std::random_device rd;

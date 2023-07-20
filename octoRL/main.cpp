@@ -7,6 +7,7 @@
 #include "include/Policy.hpp"
 #include <libconfig.h++>
 #include "include/envs/MountainCar.hpp"
+#include "include/envs/CNNTest.hpp"
 //#include <c10d/ProcessGroupMPI.hpp>
 #include <omp.h>
 #include <time.h>
@@ -33,46 +34,80 @@ using namespace std;
 
 
 int main(int argc, char** argv) {
+
+
+ // /*
   int numranks, rank, comm_sz;
   MPI_Init(&argc, &argv);
   MPI_Comm_size(MPI_COMM_WORLD, &numranks);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  int retval, EventSet = PAPI_NULL;
-	int Events[3] = {PAPI_TOT_CYC, PAPI_TOT_INS, PAPI_BR_INS};
-	long_long values[3];
+  // int retval, EventSet = PAPI_NULL;
+	// int Events[3] = {PAPI_TOT_CYC, PAPI_TOT_INS, PAPI_BR_INS};
+	// long_long values[3];
 
-	/* Initialize the PAPI library */
-	retval = PAPI_library_init(PAPI_VER_CURRENT);
+	// retval = PAPI_library_init(PAPI_VER_CURRENT);
 
-	if (retval != PAPI_VER_CURRENT) {
-	  fprintf(stderr, "PAPI library init error!\n");
-	  exit(1);
-	}
+	// if (retval != PAPI_VER_CURRENT) {
+	//   fprintf(stderr, "PAPI library init error!\n");
+	//   exit(1);
+	// }
 
-	/* Create the Event Set */
-	if (PAPI_create_eventset(&EventSet) != PAPI_OK)
-	    handle_error(1);
+	// if (PAPI_create_eventset(&EventSet) != PAPI_OK)
+	//     handle_error(1);
 
-	/* Add Total Instructions Executed to our EventSet */
-	if (PAPI_add_events(EventSet, Events, 3) != PAPI_OK)
-	    handle_error(1);
 
-	/* Start counting */
-	if (PAPI_start(EventSet) != PAPI_OK)
-	    handle_error(1);
+	// if (PAPI_add_events(EventSet, Events, 3) != PAPI_OK)
+	//     handle_error(1);
+
+
+	// if (PAPI_start(EventSet) != PAPI_OK)
+	//     handle_error(1);
  
 
   if(argc >= 2)
     configureAndRun(argv[1]);
   
-  if (PAPI_stop(EventSet, values) != PAPI_OK)
-            handle_error(1);
-  cout<<"Values for rank "<<rank<<" Cyc: "<<values[0]<<", Ins: "<<values[1]<<", Br: "<<values[2]<<
-	  " IPC: "<<real(values[1])/real(values[0])<<endl;
+  // if (PAPI_stop(EventSet, values) != PAPI_OK)
+  //           handle_error(1);
+  // cout<<"Values for rank "<<rank<<" Cyc: "<<values[0]<<", Ins: "<<values[1]<<", Br: "<<values[2]<<
+	//   " IPC: "<<real(values[1])/real(values[0])<<endl;
   MPI_Finalize();
-
+  //*/
+/*
+  vector<octorl::LayerInfo> layer_info1 = {octorl::LayerInfo(octorl::conv2d, octorl::none,"input", 3,15,3,2),
+    octorl::LayerInfo(octorl::conv2d, octorl::relu,"fs", 15,7,2,2),
+    //octorl::LayerInfo(octorl::conv2d, octorl::relu,"second", 32,32,3) ,
+    octorl::LayerInfo(octorl::max_pool_2d, octorl::none,"pool",7,2,2,2),
+    octorl::LayerInfo(octorl::flatten, octorl::none,"flat",1,1),
+    octorl::LayerInfo(octorl::linear, octorl::softmax, "output",63,3)};
+  
+  shared_ptr<octorl::CNNTest> aenv(new octorl::CNNTest());
+  octorl::Policy anet(layer_info1);
+  octorl::Policy bnet(layer_info1);
+  torch::Tensor tensor = torch::rand({32,3,32,32});
+  torch::Tensor t = torch::rand({3,32,32});
+  t = t.reshape(-1);
+  cout<<t.sizes()<<endl;
+  cout <<anet<<endl;
+  auto x = anet.conv2d_layers[0]->forward(tensor);
+  cout<<x.sizes()<<endl;
+  x = anet.conv2d_layers[1]->forward(x);
+  cout<<x.sizes()<<endl;
+  x = anet.pool2d_layers[0]->forward(x);
+  cout<<x.sizes()<<endl;
+   
+  anet.flatten_layers[0]->forward(x);
+  cout<<x.sizes()<<endl;
+  //x = anet.linear_layers[0]->forward(x);
+  //cout<<x.sizes()<<endl;
+  auto tt = aenv->reset().observation;
+  cout<<tt.sizes()<<endl;
+  //tensor = torch::rand({32,3,32,32});
+  cout<<anet.forward(tt)<<endl;
+  
   /*
   int rank, numranks, comm_sz;
+
   MPI_Init(&argc, &argv);
   MPI_Comm_size(MPI_COMM_WORLD, &numranks);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -207,4 +242,5 @@ int main(int argc, char** argv) {
 
   return 0;
   */
+ return 0;
 }

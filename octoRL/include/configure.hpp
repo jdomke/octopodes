@@ -9,6 +9,7 @@
 #include "mpi.h"
 #include "envs/MountainCar.hpp"
 #include "envs/Cartpole.hpp"
+#include "envs/CNNTest.hpp"
 #include "agents/DqnAsync.hpp"
 #include "agents/A3C.hpp"
 #include "agents/A2C.hpp"

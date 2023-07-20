@@ -95,7 +95,7 @@ void octorl::A2C::learnerRun() {
         for(int i = 1; i < num_ranks; i++)
             recvBatch();
         train();
-        if(e % 100 == 0) {
+        if(e % 10 == 0) {
             std::cout<<"Epoch: "<<e<<std::endl;
             test();
         }
@@ -140,7 +140,7 @@ bool octorl::A2C::workerRun() {
     }
 
     calculateQValAddLocal();
-    
+
    // std::cout<<memory.size()<<std::endl;
     //std::cout<<local_memory.size()<<std::endl;
     // need to calculate q_val
@@ -172,7 +172,6 @@ void octorl::A2C::calculateQValAddLocal() {
 }
 
 void octorl::A2C::train() {
-    
     actor_optimizer->zero_grad();
     critic_optimizer->zero_grad();        
     
@@ -181,7 +180,6 @@ void octorl::A2C::train() {
     torch::Tensor q_val = torch::zeros({(int)batch_memory.size()}).to(device);
     torch::Tensor advantage = torch::zeros({(int)batch_memory.size()}).to(device);
     torch::Tensor mask = torch::zeros({(int)batch_memory.size(),env->getActionSize()}).to(device);
-
     for(int i = 0; i < batch_memory.size(); i++) {
         obs_vec.push_back(batch_memory[i].first.state);
         q_val[i] = batch_memory[i].second;
@@ -191,7 +189,7 @@ void octorl::A2C::train() {
     }
     torch::TensorList input {obs_vec};
     torch::Tensor input_batch = torch::cat(input).to(device);
-
+   
     auto prob = actor.forward(input_batch);
 
     auto entropy = torch::mean(torch::sum(prob*torch::log(prob + 1e-10), -1)).to(device);
@@ -236,10 +234,12 @@ void octorl::A2C::recvBatch() {
 
     for(int i = 0; i < local_batch_size; i++) {
         torch::Tensor init_obs = torch::ones((env->getObservationSize()));
-        init_obs = init_obs.reshape({1,init_obs.size(0)});
+        //init_obs = init_obs.reshape({1,init_obs.size(0)});
         for(int j = 0; j < env->getObservationSize(); j++){
-            init_obs[0][j] = batch[b++];
+            init_obs[j] = batch[b++];
         }
+        init_obs = env->shapeObservation(init_obs);
+        
         act = (int) batch[b++];
         reward = batch[b++];
         R = batch[b++];
@@ -262,7 +262,6 @@ void octorl::A2C::sendBatch() {
             batch[b++] = sample_set[i].get()[j];
         }
     }
-
     MPI_Send(batch, local_batch_size * (env->getObservationSize() + 4), MPI_FLOAT, 0, octorl::batch_tag, MPI_COMM_WORLD);
     delete[] batch;
 }

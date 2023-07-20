@@ -95,3 +95,11 @@ int octorl::Cartpole::memorySize() {
 torch::Tensor octorl::Cartpole::getState(){
     return torch::tensor({{x, x_dot, theta, theta_dot}});
 }
+
+torch::Tensor octorl::Cartpole::shapeObservation(torch::Tensor buffer){
+    return buffer.reshape({1,buffer.size(0)});
+}
+
+torch::Tensor octorl::Cartpole::obsBuffer(int b) {
+    return torch::zeros({b,observation_space_size});
+}

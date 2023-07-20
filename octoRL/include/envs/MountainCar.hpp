@@ -32,6 +32,8 @@ namespace octorl {
             void setState(float p, float v);
             int memorySize();
             torch::Tensor getState();
+            torch::Tensor shapeObservation(torch::Tensor buffer);
+            torch::Tensor obsBuffer(int b);
     };
 }
 

@@ -2,13 +2,14 @@
 
 
 octorl::LayerInfo::LayerInfo(octorl::layer_type t, octorl::activation_type a, std::string l, int i, int out, 
-            int ks, int p, int d) {
+            int ks, int s, int p, int d) {
     type = t;
     activation = a;
     label = l;
     input = i;
     output = out;
     kernel_size = ks;
+    stride = s;
     padding = p;
     dilation = d;
 }
@@ -29,7 +30,9 @@ torch::Tensor octorl::Policy::forward(torch::Tensor x) {
        // x = activation(layers[i]->forward(x),layer_info[i].activation);
         switch (layer_info[i].type) {
             case linear:
+
                 x = activation(linear_layers[layer_info[i].vect_position]->forward(x),layer_info[i].activation);
+                
                // std::cout<<layer_info[i].label<<" "<<x<<std::endl;
                 break;
             case conv2d:
@@ -42,6 +45,7 @@ torch::Tensor octorl::Policy::forward(torch::Tensor x) {
                 break;
             case flatten:
                 x = activation(flatten_layers[layer_info[i].vect_position]->forward(x),layer_info[i].activation);
+                //x = activation(x.reshape({1,-1}), layer_info[i].activation);
                 //x = x.reshape({x.size(-1), x.size(0)});
                 //std::cout<<layer_info[i].label<<" "<<x<<std::endl;
                 break;
@@ -58,7 +62,7 @@ torch::Tensor octorl::Policy::activation(torch::Tensor x, octorl::activation_typ
             return torch::relu(x).requires_grad_(true);
             break;
         case softmax:
-            return torch::softmax(x, 1).requires_grad_(true);
+            return torch::softmax(x, x.sizes().size() - 1).requires_grad_(true);
             break;
         default:
             return x;
@@ -74,17 +78,17 @@ void octorl::Policy::addLayer(octorl::LayerInfo& l) {
             l.vect_position = linear_layers.size() - 1;
             break;
         case conv2d:
-            conv2d_layers.push_back(register_module(l.label,torch::nn::Conv2d(l.input, l.output, l.kernel_size)));
+            conv2d_layers.push_back(register_module(l.label,torch::nn::Conv2d(torch::nn::Conv2dOptions(l.input, l.output, l.kernel_size).stride(l.stride).padding(l.padding))));
             num_elem_param += l.input * l.output * l.kernel_size * l.kernel_size + l.output;
             l.vect_position = conv2d_layers.size() - 1;
             break;
         case flatten:
             flatten_layers.push_back(register_module(l.label,
-                torch::nn::Flatten()));
-            l.vect_position = flatten_layers.size() - 1;
+                 torch::nn::Flatten()));
+             l.vect_position = flatten_layers.size() - 1;
             break;
         case max_pool_2d: 
-            pool2d_layers.push_back(register_module(l.label, torch::nn::MaxPool2d(l.kernel_size)));
+            pool2d_layers.push_back(register_module(l.label, torch::nn::MaxPool2d(torch::nn::MaxPool2dOptions(l.kernel_size).stride(l.stride).padding(l.padding))));
             l.vect_position = pool2d_layers.size() - 1;
             break;
         default:

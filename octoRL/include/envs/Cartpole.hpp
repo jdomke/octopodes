@@ -54,6 +54,8 @@ namespace octorl {
             int currentStep();
             int memorySize();
             torch::Tensor getState();
+            torch::Tensor shapeObservation(torch::Tensor buffer);
+            torch::Tensor obsBuffer(int b);
 
             
 

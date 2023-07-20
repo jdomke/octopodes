@@ -15,6 +15,8 @@ namespace octorl {
             virtual int currentStep() = 0;
             virtual int memorySize() = 0;
             virtual torch::Tensor getState() = 0;
+            virtual torch::Tensor shapeObservation(torch::Tensor buffer) = 0;
+            virtual torch::Tensor obsBuffer(int b) = 0;
 
         private:
             static const int action_space_size;

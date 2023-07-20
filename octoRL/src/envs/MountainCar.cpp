@@ -95,3 +95,11 @@ int octorl::MountainCar::memorySize() {
 torch::Tensor octorl::MountainCar::getState(){
     return torch::tensor({{position,velocity}});
 }
+
+torch::Tensor octorl::MountainCar::shapeObservation(torch::Tensor buffer){
+    return buffer.reshape({1,buffer.size(0)});
+}
+
+torch::Tensor octorl::MountainCar::obsBuffer(int b) {
+    return torch::zeros({b,observation_space_size});
+}

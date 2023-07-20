@@ -215,7 +215,7 @@ bool octorl::DqnAsync::sendBatch(int done) {
     std::deque<std::shared_ptr<float>> sample_set;
     auto gen1 = std::mt19937 {std::random_device {}()};
     std::sample(local_memory.begin(), local_memory.end(),std::back_inserter(sample_set), local_batch, gen1);
-    
+     
     for(int i = 0; i < sample_set.size(); i++) {
        // auto mem = local_memory.pop_front();
         for(int j = 0; j < env->memorySize(); j++){
@@ -225,6 +225,7 @@ bool octorl::DqnAsync::sendBatch(int done) {
        // local_memory.pop_front();
     }
     MPI_Send(batch, local_batch * env->memorySize()+2, MPI_FLOAT, 0, octorl::batch_tag, MPI_COMM_WORLD);
+
     delete[] batch;
 
     return true;    
@@ -237,7 +238,6 @@ std::pair<int,int> octorl::DqnAsync::recvBatch() {
     MPI_Recv(batch,local_batch * env->memorySize() + 2, MPI_FLOAT, MPI_ANY_SOURCE, octorl::batch_tag, MPI_COMM_WORLD,
     MPI_STATUS_IGNORE);
 
-    
     torch::Tensor init_obs = torch::ones({{env->getObservationSize()}});
     torch::Tensor next_obs = torch::ones({{env->getObservationSize()}});
     int act, done;
@@ -249,11 +249,15 @@ std::pair<int,int> octorl::DqnAsync::recvBatch() {
         for(int j = 0; j < env->getObservationSize(); j++){
             init_obs[j] = batch[b++];
         }
+        
+        init_obs = env->shapeObservation(init_obs);
+
         act = (int) batch[b++];
         reward = batch[b++];
         for(int j = 0; j < env->getObservationSize(); j++){
             next_obs[j] = batch[b++];
         }
+        next_obs = env->shapeObservation(next_obs);
         done = (int) batch[b++];
 
         // may need to reshape tensors
@@ -272,29 +276,31 @@ int octorl::DqnAsync::recvBatchAndTrain() {
     std::vector<octorl::Memory> buf;
     MPI_Recv(batch,local_batch * env->memorySize() + 2, MPI_FLOAT, MPI_ANY_SOURCE, octorl::batch_tag, MPI_COMM_WORLD,
     MPI_STATUS_IGNORE);
-    torch::Tensor init_obs = torch::ones((env->getObservationSize()));
-    torch::Tensor next_obs = torch::ones((env->getObservationSize()));
-    init_obs = init_obs.reshape({1,init_obs.size(0)});
+    
+  //  init_obs = init_obs.reshape({1,init_obs.size(0)});
         //next_obs = next_obs.reshape({1,next_obs.size(0)});
-    next_obs = next_obs.reshape({1,next_obs.size(0)});
+ //   next_obs = next_obs.reshape({1,next_obs.size(0)});
     int act, done;
     float reward;
     int b = 0;
     int src = (int) batch[b++];
     int finished = (int) batch[b++];
     for(int i = 0; i < local_batch; i++) {
+        torch::Tensor init_obs = torch::ones((env->getObservationSize()));
+        torch::Tensor next_obs = torch::ones((env->getObservationSize()));
         for(int j = 0; j < env->getObservationSize(); j++){
-            init_obs[0][j] = batch[b++];
+            init_obs[j] = batch[b++];
         }
+        init_obs = env->shapeObservation(init_obs);
         act = (int) batch[b++];
         reward = batch[b++];
         for(int j = 0; j < env->getObservationSize(); j++){
-            next_obs[0][j] = batch[b++];
+            next_obs[j] = batch[b++];
         }
+        next_obs = env->shapeObservation(next_obs);
         done = (int) batch[b++];
 
         buf.push_back(octorl::Memory(-1,init_obs, act, reward, next_obs,(bool) done));
-        
     }
     trainOnBatch(buf);
     delete[] batch;
@@ -304,6 +310,8 @@ int octorl::DqnAsync::recvBatchAndTrain() {
 float octorl::DqnAsync::trainOnBatch(std::vector<octorl::Memory> batch) {
     std::vector<torch::Tensor> in_vec;
     std::vector<torch::Tensor> out_vec;
+
+   
     for(auto i : batch){
         
         in_vec.push_back(i.state);

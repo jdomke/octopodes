@@ -36,6 +36,7 @@ add_executable(main main.cpp
     #src/agents/Dqn.cpp
     src/envs/Blackjack.cpp
     src/envs/Cartpole.cpp
+    src/envs/CNNTest.cpp
     #src/quickTest.cpp
     src/agents/DqnAsync.cpp
     src/agents/A3C.cpp

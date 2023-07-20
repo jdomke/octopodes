@@ -32,9 +32,9 @@ namespace octorl{
         activation_type activation;
         std::string label;
         int vect_position;
-        int input, output, kernel_size, padding, dilation;
+        int input, output, kernel_size, stride, padding, dilation;
         LayerInfo(layer_type t, activation_type a, std::string l, int i, int out, 
-            int ks = 1, int p = 1, int d = 1);
+            int ks = 1, int s = 1, int p = 0, int d = 1);
     };
 
     class Policy : public torch::nn::Module  {
@@ -48,6 +48,11 @@ namespace octorl{
             void loadFromSerial(float *buffer);
             void applyGradient(float *buffer);
             int getElementCount();
+            
+            std::vector<torch::nn::Linear> linear_layers;
+            std::vector<torch::nn::Conv2d> conv2d_layers;
+            std::vector<torch::nn::MaxPool2d> pool2d_layers;
+            std::vector<torch::nn::Flatten> flatten_layers;
         private:
             //std::vector<std::shared_ptr<torch::nn::AnyModule>> layers;
             //std::vector<std::shared_ptr<torch::nn::ModuleHolder>> layers;
@@ -57,10 +62,6 @@ namespace octorl{
             void addLayer(LayerInfo &l);
             int num_elem_param = 0; 
             // need a vector for each layer type
-            std::vector<torch::nn::Linear> linear_layers;
-            std::vector<torch::nn::Conv2d> conv2d_layers;
-            std::vector<torch::nn::MaxPool2d> pool2d_layers;
-            std::vector<torch::nn::Flatten> flatten_layers;
 
     };
     
