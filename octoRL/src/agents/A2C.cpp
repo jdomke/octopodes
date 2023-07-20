@@ -95,7 +95,7 @@ void octorl::A2C::learnerRun() {
         for(int i = 1; i < num_ranks; i++)
             recvBatch();
         train();
-        if(e % 10 == 0) {
+        if(e % 100 == 0) {
             std::cout<<"Epoch: "<<e<<std::endl;
             test();
         }
@@ -183,15 +183,14 @@ void octorl::A2C::train() {
     for(int i = 0; i < batch_memory.size(); i++) {
         obs_vec.push_back(batch_memory[i].first.state);
         q_val[i] = batch_memory[i].second;
+	
         advantage[i] = torch::sub(q_val[i],batch_memory[i].first.value).item().toDouble();
 
         mask[i] = batch_memory[i].first.action_mask;
     }
     torch::TensorList input {obs_vec};
     torch::Tensor input_batch = torch::cat(input).to(device);
-   
     auto prob = actor.forward(input_batch);
-
     auto entropy = torch::mean(torch::sum(prob*torch::log(prob + 1e-10), -1)).to(device);
     //std::cout<<entropy<<std::endl;
     //std::cout<<input_batch<<std::endl;

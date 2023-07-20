@@ -24,13 +24,11 @@ octorl::Policy::Policy(std::vector<octorl::LayerInfo> l_i) {
 torch::Tensor octorl::Policy::forward(torch::Tensor x) {
 
     int i = 0;
-
     for(i; i < layer_info.size(); i++) {
         //x = activation(layers[i]->as<torch::nn::Linear>()->forward(x),layer_info[i].activation);
        // x = activation(layers[i]->forward(x),layer_info[i].activation);
         switch (layer_info[i].type) {
             case linear:
-
                 x = activation(linear_layers[layer_info[i].vect_position]->forward(x),layer_info[i].activation);
                 
                // std::cout<<layer_info[i].label<<" "<<x<<std::endl;
