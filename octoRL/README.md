@@ -2,10 +2,10 @@
 
 ## Build
 ### Requirements
-Pytorch installed on system (either through pip or building from source)
-A compiler supporting MPI
-PAPI
-libconfig
+- Pytorch installed on system (either through pip or building from source)
+- A compiler supporting MPI
+- PAPI
+- libconfig
 
 ### Build commands
 ```bash
