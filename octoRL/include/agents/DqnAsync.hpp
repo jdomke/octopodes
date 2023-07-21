@@ -50,6 +50,8 @@ namespace octorl {
             void pushToBuffer(Memory m);
             float trainOnBatch(std::vector<Memory> batch);
             void updateTarget();
+            void learnerRun();
+            void workerRun();
             torch::Tensor calcTargetF(Memory m);
 
         private:
