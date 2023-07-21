@@ -8,7 +8,7 @@ PAPI
 libconfig
 
 ### Build commands
-'''bash
+```bash
 
 mkdir build
 cd build
@@ -18,7 +18,7 @@ cmake -DCMAKE_PREFIX_PATH=`python -c 'import torch;print(torch.utils.cmake_prefi
 cmake -DCMAKE_PREFIX_PATH=/absolute/path/to/libtorch ..
 
 cmake --build . --config Release
-'''
+```
 
 ## Configuration Files
 OctoRL uses the libconfig library to handle configuration files.
@@ -28,9 +28,9 @@ There are two fields required for a configuration file
 
 ### Environment configuration
 To set the environment include 
-'''
+```
 environment = "somme supported environment"
-'''
+```
 currently Cartpole and MountainCar are supported
 
 ### Agent configuration
@@ -76,7 +76,7 @@ You can also define the layers input size, output size, kernel_size, padding, st
 See files in configs folder for example configuration files for each Agent type
 
 To run code 
-'''bash
+```bash
 # where P is the number of nodes and Conf is the path to your configuration file
 mpirun -n P main Conf
-'''
+```
