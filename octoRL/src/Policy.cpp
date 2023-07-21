@@ -62,6 +62,11 @@ torch::Tensor octorl::Policy::activation(torch::Tensor x, octorl::activation_typ
         case softmax:
             return torch::softmax(x, x.sizes().size() - 1).requires_grad_(true);
             break;
+        case sigmoid:
+            return torch::sigmoid(x);
+            break;
+        case tanh:
+            return torch::tanh(x);
         default:
             return x;
             break;

@@ -22,7 +22,10 @@ namespace octorl{
     enum activation_type {
         relu,
         softmax,
-        none
+        none,
+        sigmoid,
+        tanh
+
     };
 
 

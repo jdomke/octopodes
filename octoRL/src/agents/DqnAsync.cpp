@@ -57,6 +57,7 @@ void octorl::DqnAsync::test() {
     std::cout<<"test Goals: "<<test_goals<<std::endl;
     std::cout<<"Avg Reward: "<<avg_reward/100<<std::endl;
 }
+
 void octorl::DqnAsync::learnerRun() {
     MPI_Barrier(MPI_COMM_WORLD);
     broadcastModel();

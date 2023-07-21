@@ -13,7 +13,9 @@ map<string, octorl::layer_type> layer_map {
 map<string, octorl::activation_type> activation_map {
         {"relu",octorl::relu},
         {"softmax", octorl::softmax},
-        {"none", octorl::none}};
+        {"none", octorl::none},
+        {"sigmoid", octorl::sigmoid},
+        {"tanh", octorl::tanh}};
 
 void configureAndRun(const char* file) {
     Config cfg;

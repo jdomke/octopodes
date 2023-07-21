@@ -53,8 +53,6 @@ namespace octorl {
             std::default_random_engine gen;
             std::uniform_real_distribution<float> distribution{std::uniform_real_distribution<float>(0,1)};
             std::shared_ptr<EnvironmentsBase> env;
-            //octorl::Mlp critic;
-            //octorl::Mlp actor;
             Policy critic;
             Policy actor;
 
