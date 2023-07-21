@@ -1,3 +1,0 @@
-/mnt/c/Users/dmend/riken/octopodes/octorl/armBuild/CMakeFiles/main.dir
-/mnt/c/Users/dmend/riken/octopodes/octorl/armBuild/CMakeFiles/edit_cache.dir
-/mnt/c/Users/dmend/riken/octopodes/octorl/armBuild/CMakeFiles/rebuild_cache.dir
