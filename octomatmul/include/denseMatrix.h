@@ -6,7 +6,6 @@ using namespace std;
 
 template <typename T>
 class DenseMatrix{
-
         private: 
             vector< vector< T > >  matrix_;
             int rows_;

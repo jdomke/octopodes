@@ -297,42 +297,50 @@ SparseMatrix<T> SparseMatrix<T> :: Transpose(){
 }
 
 template <typename T>
-SparseMatrix<T> SparseMatrix<T> :: operator*(const SparseMatrix<T>& rhs){
-    if (cols_ != rhs.rows_ ){
+SparseMatrix<T> SparseMatrix<T>::operator*(const SparseMatrix<T>& rhs) {
+    if (cols_ != rhs.rows_) {
         cout << "unmatching size between two matrices.\n";
         exit(1);
     }
+
+    // transpose rhs matrix
     auto rhsT(rhs);
     rhsT = rhsT.Transpose();
-    SparseMatrix<T> resMatrix(getRows(),rhsT.getRows(), 0, 0);
-    // #pragma omp parallel if (parallel_ == 1)
-    for (auto itr = eleLocation_.begin(); itr != eleLocation_.end(); itr++){ 
-        for (auto itr2 = rhsT.eleLocation_.begin(); itr2 != rhsT.eleLocation_.end(); itr2++){           //compare the map between two matrices, if theres elements at the same row/col, multiply them and add onto the result matrix row matches
-            // #pragma omp task
-            if (itr->first.second == itr2->first.second){
-                auto pos = std::make_pair(itr->first.first, itr2->first.first);
-                if (resMatrix.eleLocation_[pos]){
-                    if constexpr(is_same_v<T, MKL_F16>){
-                        resMatrix.eleLocation_[pos] = f2h( h2f(resMatrix.eleLocation_[pos]) + (h2f(itr->second) * h2f(itr2->second)));
-                    }
-                    else{
-                        resMatrix.eleLocation_[pos] += (itr->second * itr2->second);
-                    }
-                }
-                else{
-                    if constexpr(is_same_v<T, MKL_F16>){
-                        resMatrix.eleLocation_[pos] = f2h(h2f(itr->second) * h2f(itr2->second));
-                    }
-                    else{
-                        resMatrix.eleLocation_[pos] = itr->second * itr2->second;
-                    }
+
+    SparseMatrix<T> resMatrix(getRows(), rhsT.getCols(), 0, 0);
+
+    // Precompute the row-wise representation of rhsT
+    unordered_map<int, unordered_map<int, T>> rhsRowWise;
+    for (const auto& itr : rhsT.eleLocation_) {
+        rhsRowWise[itr.first.first][itr.first.second] = itr.second;
+    }
+
+    // Perform matrix multiplication
+    for (const auto& itr : eleLocation_) {
+        int row = itr.first.first;          //store row and col, and value 
+        int col = itr.first.second;
+        T value = itr.second;
+
+        auto rhsRowItr = rhsRowWise.find(col);      
+        if (rhsRowItr != rhsRowWise.end()) {
+            for (const auto& rhsItr : rhsRowItr->second) {
+                int resRow = row;               
+                int resCol = rhsItr.first;
+                T rhsValue = rhsItr.second;
+
+                if constexpr (is_same_v<T, MKL_F16>) {          //perform multiplication with the values from two matrices and add it to the resulting matrix
+                    resMatrix.eleLocation_[make_pair(resRow, resCol)] =
+                        f2h(h2f(resMatrix.eleLocation_[make_pair(resRow, resCol)]) +
+                            h2f(value) * h2f(rhsValue));
+                } else {
+                    resMatrix.eleLocation_[make_pair(resRow, resCol)] += value * rhsValue;
                 }
             }
         }
     }
-        resMatrix.nonZeros_ = resMatrix.eleLocation_.size();
-    return resMatrix;
 
+    resMatrix.nonZeros_ = resMatrix.eleLocation_.size();
+    return resMatrix;
 }
 
 
@@ -348,7 +356,6 @@ vector<T> SparseMatrix<T> :: operator*(const vector<T>& rhs){
     if (rhs.size() == cols_){
         int curCol = 0;
         T sum;
-        #pragma omp parallel for reduction(+:resVector) if (parallel_ == 1)
         for (auto itr = eleLocation_.begin(); itr != eleLocation_.end(); itr++){            //go through every element of the map and multiply the entries between the matrix and vector where the position match
             if constexpr(is_same_v<T, MKL_F16>){
                 resVector[itr->first.first] = f2h(h2f(resVector[itr->first.first]) + h2f(itr->second) * h2f(rhs[itr->first.second]));
