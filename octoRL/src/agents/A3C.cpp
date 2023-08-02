@@ -1,5 +1,5 @@
 #include "../../include/agents/A3C.hpp"
-
+#include <ctime>
 
 //https://github.com/dennybritz/reinforcement-learning/blob/master/PolicyGradient/a3c/train.py
 
@@ -67,6 +67,7 @@ void octorl::A3C::test() {
 
     std::cout<<"test Goals: "<<test_goals<<std::endl;
     std::cout<<"Avg Reward: "<<avg_reward/100<<std::endl;
+    std::cout<<"Time: "<<std::time(NULL)<<std::endl;
 }
 
 void octorl::A3C::run() {
@@ -108,6 +109,27 @@ void octorl::A3C::globalNetworkRun() {
         }
         else
             sendKeepRunning(true, src);
+
+
+        float rewards = 0; 
+        auto obs = env->reset();    
+        rewards += obs.reward;
+        //avg_reward += obs.reward;
+        int act;
+        while(!obs.done) {
+	     act = action(obs.observation);
+            obs = env->step(act);
+            rewards += obs.reward;
+	}
+        if(obs.goal){
+            
+            std::cout<<"Reached Goal: "<<rewards<<std::endl;
+            std::cout<<"Time: "<<std::time(NULL)<<std::endl;
+
+        }
+
+
+
     }
 }
 

@@ -16,9 +16,14 @@ octorl::DqnAsync::DqnAsync(std::shared_ptr<octorl::EnvironmentsBase> environment
     batch_freq = freq;
     epochs = ep_count;
     target_model = policy_model;
-   /* if (torch::cuda::is_available()) {                                                                                                                                                                                     std::cout << "CUDA is available! Training on GPU." << std::endl;                                                                                                                                           
+    
+    if (torch::cuda::is_available() && r == 0) { 
+	std::cout << "CUDA is available! Training on GPU." << r<<std::endl;                                                                                                                                           
         device = torch::kCUDA;                                                                                                                                                                                     
-    }*/         
+    }         
+    model.to(device); 
+    target_model.to(device); 
+    
     octorl::loadstatedict2(target_model,policy_model);
     octorl::loadstatedict2(model,policy_model);
     learning_rate = lr;
@@ -29,6 +34,8 @@ octorl::DqnAsync::DqnAsync(std::shared_ptr<octorl::EnvironmentsBase> environment
     srand(seed);
     rank = r;
     numranks = nr;
+    losses = torch::zeros(100*(numranks-1));
+    loss_counter = 0;
 }
 
 void octorl::DqnAsync::test() {
@@ -44,8 +51,9 @@ void octorl::DqnAsync::test() {
             avg_reward += obs.reward;
             int act;
             while(!obs.done) {
-                init_obs = obs.observation;
-                act = action(obs.observation);
+		obs.observation.to(device);
+                //init_obs = obs.observation;
+		act = action(obs.observation.to(device),true);
                 obs = env->step(act);
                 rewards += obs.reward;
                 avg_reward += obs.reward;
@@ -74,8 +82,10 @@ void octorl::DqnAsync::learnerRun() {
         broadcastKeepRunning(true);
         if(g % 100 == 0) {
             std::cout<<"Epoch: "<<g<<std::endl;
-            test();
-        }
+      	    test();
+	    std::cout<<"Average Loss: "<<torch::mean(losses)<<std::endl;
+            loss_counter = 0;
+	}
     }
     
     MPI_Barrier(MPI_COMM_WORLD);
@@ -86,26 +96,29 @@ void octorl::DqnAsync::learnerRun() {
 void octorl::DqnAsync::workerRun() {
     MPI_Barrier(MPI_COMM_WORLD);
     recvBroadcastModel();
+    std::cout<<"worker runn\n";
     int g = 0;
     while(recvBroadcastKeepRunning()){
-        torch::Tensor init_obs = env->reset().observation;
+        torch::Tensor init_obs = env->reset().observation.to(device);
         
         auto act = action(init_obs);
         auto obs = env->step(act);
-        addToLocalMemory(init_obs, act, obs.reward, obs.observation, obs.done);
+	obs.observation.to(device);
+        addToLocalMemory(init_obs, act, obs.reward, obs.observation.to(device), obs.done);
         int steps = 1;
         int running_reward = obs.reward;
         while(!obs.done) {
-            init_obs = obs.observation;
+	    obs.observation.to(device);
+            init_obs = obs.observation.to(device);
             act = action(init_obs);
             obs = env->step(act);
-            addToLocalMemory(init_obs, act, obs.reward, obs.observation, obs.done);
+            addToLocalMemory(init_obs, act, obs.reward, obs.observation.to(device), obs.done);
             running_reward += obs.reward;
             steps++;
         }
         epsilon *= epsilon_decay;
         epsilon = std::max(epsilon, epsilon_min);
-        sendBatch(obs.done);
+ 	sendBatch(obs.done);
         MPI_Barrier(MPI_COMM_WORLD);
         recvBroadcastModel();
     }
@@ -140,11 +153,11 @@ bool octorl::DqnAsync::recvBroadcastKeepRunning() {
     return kr;
 }
 
-int octorl::DqnAsync::action(torch::Tensor state) {
+int octorl::DqnAsync::action(torch::Tensor state, bool testing) {
 
     float r = distribution(gen);
 
-    if(r < epsilon) {
+    if(r < epsilon && !testing) {
         int r = rand() % env->getActionSize();
         return r;
     }
@@ -266,18 +279,18 @@ int octorl::DqnAsync::recvBatchAndTrain() {
         for(int j = 0; j < env->getObservationSize(); j++){
             init_obs[j] = batch[b++];
         }
-        init_obs = env->shapeObservation(init_obs);
+        init_obs = env->shapeObservation(init_obs).to(device);
         act = (int) batch[b++];
         reward = batch[b++];
         for(int j = 0; j < env->getObservationSize(); j++){
             next_obs[j] = batch[b++];
         }
-        next_obs = env->shapeObservation(next_obs);
+        next_obs = env->shapeObservation(next_obs).to(device);
         done = (int) batch[b++];
 
         buf.push_back(octorl::Memory(-1,init_obs, act, reward, next_obs,(bool) done));
     }
-    trainOnBatch(buf);
+    losses[loss_counter++] = trainOnBatch(buf);
     delete[] batch;
     return src;
 }
@@ -285,9 +298,9 @@ int octorl::DqnAsync::recvBatchAndTrain() {
 float octorl::DqnAsync::trainOnBatch(std::vector<octorl::Memory> batch) {
     std::vector<torch::Tensor> in_vec;
     std::vector<torch::Tensor> out_vec;
- 
+//    std::cout<<"train\n";
     for(auto i : batch){
-        
+	i.state.to(device);
         in_vec.push_back(i.state);
         out_vec.push_back(calcTargetF(i));
     }
@@ -296,9 +309,9 @@ float octorl::DqnAsync::trainOnBatch(std::vector<octorl::Memory> batch) {
     torch::TensorList target {out_vec};
     torch::Tensor input_batch = torch::cat(input).to(device);
     torch::Tensor target_batch = torch::cat(target).to(device);
-    
     model_optimizer->zero_grad();
     torch::Tensor output = model.forward({input_batch});
+
     torch::Tensor loss = torch::mse_loss(target_batch,output).to(device);
     loss.backward({}, false);
     model_optimizer->step();

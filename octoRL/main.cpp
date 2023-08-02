@@ -1,14 +1,10 @@
-//#include "include/driver.hpp"
-//#include "include/quickTest.hpp"
 #include "include/agents/DqnAsync.hpp"
 #include "include/agents/A3C.hpp"
 #include "include/agents/A2C.hpp"
-//#include "include/Cnn.hpp"
 #include "include/Policy.hpp"
 #include <libconfig.h++>
 #include "include/envs/MountainCar.hpp"
 #include "include/envs/CNNTest.hpp"
-//#include <c10d/ProcessGroupMPI.hpp>
 #include <omp.h>
 #include <time.h>
 #include <unistd.h>
@@ -20,17 +16,16 @@
 #include <map>
 #include <papi.h>
 #include <cstring>
-//#include "include/Mlp.hpp"
-
+#include <ctime>
 
 using namespace libconfig;
 using namespace std;
 
-// void handle_error (int retval)
-// {
-//      printf("PAPI error %d: %s\n", retval, PAPI_strerror(retval));
-//      exit(1);
-// }
+void handle_error (int retval)
+ {
+      printf("PAPI error %d: %s\n", retval, PAPI_strerror(retval));
+      exit(1);
+}
 
 
 int main(int argc, char** argv) {
@@ -40,32 +35,44 @@ int main(int argc, char** argv) {
   MPI_Init(&argc, &argv);
   MPI_Comm_size(MPI_COMM_WORLD, &numranks);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  // int retval, EventSet = PAPI_NULL;
-	// int Events[3] = {PAPI_TOT_CYC, PAPI_TOT_INS, PAPI_BR_INS};
-	// long_long values[3];
+  int retval, EventSet = PAPI_NULL;
+	 int Events[3] = {PAPI_TOT_CYC, PAPI_TOT_INS, PAPI_BR_INS};
+	 long_long values[3];
 
-	// retval = PAPI_library_init(PAPI_VER_CURRENT);
+ retval = PAPI_library_init(PAPI_VER_CURRENT);
+ if(rank == 0)
+	 cout<<"StartTime: "<<time(NULL)<<endl;
+ if (retval != PAPI_VER_CURRENT) {
+   fprintf(stderr, "PAPI library init error!\n");
+   exit(1);
+ }
 
-	// if (retval != PAPI_VER_CURRENT) {
-	//   fprintf(stderr, "PAPI library init error!\n");
-	//   exit(1);
-	// }
-
-	// if (PAPI_create_eventset(&EventSet) != PAPI_OK)
-	//     handle_error(1);
-
-
-	// if (PAPI_add_events(EventSet, Events, 3) != PAPI_OK)
-	//     handle_error(1);
+ if (PAPI_create_eventset(&EventSet) != PAPI_OK)
+     handle_error(1);
 
 
-	// if (PAPI_start(EventSet) != PAPI_OK)
-	//     handle_error(1);
+ if (PAPI_add_events(EventSet, Events, 3) != PAPI_OK)
+     handle_error(1);
+
+
+ if (PAPI_start(EventSet) != PAPI_OK)
+     handle_error(1);
  
 
   if(argc >= 2)
     configureAndRun(argv[1]);
-  
-  MPI_Finalize();
+
+	if (PAPI_stop(EventSet, values) != PAPI_OK)
+            handle_error(1);
+  // cout<<"\nValues for rank "<<rank<<"\n\tCyc: "<<values[0]<<"\n\tIns: "<<values[1]<<"\n\tBr: "<<values[2]<<
+//	   "\n\tIPC: "<<real(values[1])/real(values[0])<<endl;
+   	
+	cout<<"Values for rank "<<rank<<" Cyc: "<<values[0]<<" Ins: "<<values[1]<<" Br: "<<values[2]<<
+	   " IPC: "<<real(values[1])/real(values[0])<<endl;
+  /*if(rank == 0)
+	cout<<"rank0 "<<values[1]<<endl;		
+  else
+	cout<<values[1]<<",";*/
+	MPI_Finalize();
  return 0;
 }

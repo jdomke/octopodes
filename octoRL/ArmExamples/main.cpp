@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &numranks);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-
+/*
     int retval, EventSet = PAPI_NULL;
 	int Events[3] = {PAPI_TOT_CYC, PAPI_TOT_INS, PAPI_BR_INS};
 	long_long values[3];
@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
 
 	if (PAPI_start(EventSet) != PAPI_OK)
 	    handle_error(1);
- 
+ 	*/
     vector<octorl::LayerInfo> act_info {octorl::LayerInfo(octorl::linear, octorl::relu, "input", 4,64),
         octorl::LayerInfo(octorl::linear, octorl::relu, "fc1", 64,32),
         octorl::LayerInfo(octorl::linear, octorl::softmax, "output", 32,2)};    
@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
     octorl::Policy actor(act_info);
     octorl::Policy critic(crit_info);
 
-    octorl::A3C agent(make_shared<octorl::CartPole>(),1000000,critc, actor,0.99, 1000, 223423, 0.001,32,rank, numranks);
+    octorl::A3C agent(make_shared<octorl::Cartpole>(),1000000,critic, actor,0.99, 1000, 223423, 0.001,32,rank, numranks);
     agent.run();
 
     MPI_Finalize();

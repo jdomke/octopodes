@@ -38,7 +38,7 @@ namespace octorl {
             bool broadcastModel();
             bool recvModel();
             bool recvBroadcastModel();
-            int action(torch::Tensor state);
+            int action(torch::Tensor state, bool testing = false);
             bool sendBatch(int done);
             std::pair<int,int> recvBatch();
             void test();
@@ -83,6 +83,8 @@ namespace octorl {
             void addToLocalMemory(torch::Tensor init_obs, int act, float reward, torch::Tensor next_obs, int done);
             MPI_Status status;
             MPI_Request req1, req2; 
+	    torch::Tensor losses;
+	    int loss_counter;
     };
 }
 

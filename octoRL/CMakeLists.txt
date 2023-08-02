@@ -12,13 +12,15 @@ find_package(Torch REQUIRED)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fopenmp")
 include_directories(SYSTEM ${TORCH_INCLUDE_DIRS})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+
+
 find_package(OpenMP REQUIRED)
 find_package(MPI REQUIRED)
 
 
-#find_package(libconfig CONFIG REQUIRED)
+find_package(libconfig REQUIRED)
 
-#find_library(libconfig config)
+find_library(libconfig config)
 #find_library(LIBCONFIGPP_LOCATION libconfig++)
 #find_library(LIBCONFIG_LOCATION libconfig)
 find_library(libconfig libconfig)
@@ -50,8 +52,8 @@ add_executable(main main.cpp
 #     target_link_libraries(main PUBLIC OpenMP::OpenMP_CXX)
 # endif() 
 #add_compile_options(-lconfig++)
-#add_compile_options(-lconfig)
-target_link_libraries(main "${TORCH_LIBRARIES}" OpenMP::OpenMP_CXX MPI::MPI_CXX config++ config ${PAPI_LIBRARIES}) 
+#add_compile_options(-lconfig) config++ config 
+target_link_libraries(main "${TORCH_LIBRARIES}" OpenMP::OpenMP_CXX MPI::MPI_CXX config config++ ${PAPI_LIBRARIES}) 
 #add_compile_options(-openmp -lpthread)
 #target_link_options(main PUBLIC ${OpenMP_CXX_FLAGS})
 
