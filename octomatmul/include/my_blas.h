@@ -41,7 +41,45 @@ void blas_batch_gemv(const int parallel, const int batch_count, const int* batch
           
       }
 }
-
+template <typename T>
+void CSRMVMultiply(const CSRMatrix<T>& matrix, const T* const* x, T** &result, const int total_batch_size, const int xlen, const int parallel_) {    //CSR matrix vector multiplication
+    #pragma omp parallel for schedule(static) if (parallel_ == 1)
+    for (int batch = 0; batch < total_batch_size; batch++) {
+        for (int i = 0; i < xlen; i++) {
+            T sum = 0;
+            for (int j = matrix.rowPtr[batch][i]; j < matrix.rowPtr[batch][i + 1]; j++) {   //iterate through row 
+                int colIdx = matrix.columns[batch][j];
+                if constexpr(is_same_v<T, MKL_F16>){
+                    sum = f2h(h2f(sum) + h2f(matrix.values[batch][j]) * h2f(x[batch][colIdx]));
+                }
+                else{
+                    sum += matrix.values[batch][j] * x[batch][colIdx];
+                }
+            }
+            result[batch][i] = sum;
+        }
+    }
+    
+}
+template <typename T>
+void CSCMVMultiply(const CSCMatrix<T>& matrix, const T* const* x, T** &result, const int total_batch_size, const int xlen, const int parallel_) {  //CSC matrix vector multiplication
+    #pragma omp parallel for schedule(static) if (parallel_ == 1)
+    for (int batch = 0; batch < total_batch_size; batch++) {
+        for (int i = 0; i < xlen; i++) {
+            T sum = 0;
+            for (int j = matrix.colPtr[batch][i]; j < matrix.colPtr[batch][i + 1]; j++) {       //iterate through col and multiply
+                int rowIdx = matrix.rows[batch][j];
+                if constexpr(is_same_v<T, MKL_F16>){
+                    sum = f2h(h2f(sum) + h2f(matrix.values[batch][j]) * h2f(x[batch][rowIdx]));
+                }
+                else{
+                    sum += matrix.values[batch][j] * x[batch][rowIdx];
+                }
+            }
+            result[batch][i] = sum;
+        }
+    }
+}
 template <typename T>
 void ProcessVariablesandPerformBLAS(const int parallel_, int *m, int* n, int* k, const CBLAS_TRANSPOSE transA, const CBLAS_TRANSPOSE transB, const CBLAS_LAYOUT layout, int* lda, int* ldb, int* ldc, int* lda_v, int* incx, int* incy, int incx_, int incy_, int m_, int k_, int n_, const int* batch_head, const int batch_count, const int* batch_size, const int total_batch_size, const T maxNum){    
     size_t a_size, b_size, c_size, x_size, y_size, align=256;
@@ -142,12 +180,6 @@ void ProcessVariablesandPerformBLAS(const int parallel_, int *m, int* n, int* k,
       double t1 = omp_get_wtime();
       cout << "time for one run of GEMM operation: " << t1 - t0 << endl;
     }
-    // for (int i = 0; i < 1; i++){
-    //   cout << h2f(a[0][i]) << " a ";
-    //   cout << h2f(b[0][i]) << " b ";
-    //   cout << h2f(c[0][i]) << " c ";
-    //   cout << endl;
-    // }
     for (int i = 0; i < batch_count; i++){
       for (int j = 0; j < batch_size[i]; j++){
           free(a[batch_head[i]+j]);
@@ -165,145 +197,245 @@ void ProcessVariablesandPerformBLAS(const int parallel_, int *m, int* n, int* k,
     free(alpha);
     free(beta);
 }
-
 template <typename T>
-void PerformCSRSparseBLASOperations(const int total_batch_size, const int m_, const int n_, const int k_,  const int transA_, const int layout_, const int maxNum, const int parallel_){
-    int aRow = m_, aCol = k_, a2Row = k_, a2Col = n_;
-    sparse_operation_t opr;
-    opr = transA_ == 0 ? SPARSE_OPERATION_NON_TRANSPOSE : SPARSE_OPERATION_TRANSPOSE;     //transpose if transA is 1, otherwise don't
-    CSRMatrix<T> m1(total_batch_size);
-    ProcessCSRMatrix(m1, total_batch_size, m_, k_, maxNum);
-    CSRMatrix<T> m2(total_batch_size);
-    ProcessCSRMatrix(m2, total_batch_size, a2Row, a2Col, maxNum);
-    T **b = new T*[total_batch_size];
-    T **c = new T*[total_batch_size];
-    struct matrix_descr descrA;
-    descrA.type = SPARSE_MATRIX_TYPE_GENERAL;       //type general means the matrix will be processed as is
-
-    sparse_layout_t layout_b;
-    layout_b = layout_ == 0 ? SPARSE_LAYOUT_ROW_MAJOR : SPARSE_LAYOUT_COLUMN_MAJOR;     //column or row major depending on layout
-
-    int ldb, ldc, bRow, bCol, cRow, cCol;
-    if (layout_b == SPARSE_LAYOUT_COLUMN_MAJOR){          //set row and col for b and c based on the operation and layout
-      if (opr == SPARSE_OPERATION_NON_TRANSPOSE){
-        bRow = ldb = k_;
-        cRow = ldc = m_;
+void sparse_blas_gemm_gemv(const int type, const sparse_operation_t opr, const matrix_descr descrA, const sparse_layout_t layout_b, const int parallel_, const int total_batch_size, const int cCol, const int ldb, const int ldc, const sparse_matrix_t* a, const T* const * b, T** c, const sparse_matrix_t* bSparse, sparse_matrix_t* resMatrix, const T* const * x, T** y){
+    double t0, t1;
+    if (!(layout_b == SPARSE_LAYOUT_COLUMN_MAJOR && type == 1)){      //type 0 = CSR, type 1 = CSC format
+      t0 = omp_get_wtime();
+      #pragma omp parallel for if (parallel_ == 1)
+      for (int i = 0; i < total_batch_size; i++){         //run sparse x dense matrix multiplication
+        if constexpr(is_same_v<T, float>){
+          mkl_sparse_s_mm(opr, 1.0, a[i], descrA, layout_b, b[i], cCol, ldb, 0.0, c[i], ldc);
+        }
+        else if constexpr(is_same_v<T, double>){
+          mkl_sparse_d_mm(opr, 1.0, a[i], descrA, layout_b, b[i], cCol, ldb, 0.0, c[i], ldc);
+        }
       }
-      else{
-        bRow = ldb = m_;
-        cRow = ldc = k_;
-      }
-      bCol = n_;
-      cCol = n_;
+      t1 = omp_get_wtime();
+      cout << "time for sparse matrix * dense matrix operation: " <<  t1 - t0 << endl;    
     }
-    else if (layout_b == SPARSE_LAYOUT_ROW_MAJOR){
-      if (opr == SPARSE_OPERATION_NON_TRANSPOSE){
-        bRow = aCol;
-        cRow = aRow;
-      }
-      else{
-        bRow = aRow;
-        cRow = aCol;
-      }
-      bCol = ldb = n_;
-      cCol = ldc = n_;
-    }
-    for (int i = 0; i < total_batch_size; i++){       //allocate space and randomly generate dense matrix B, dense matrix C is used to store the results
-      b[i] = (T*)mkl_malloc(bRow * bCol * sizeof(T), 256);
-      c[i] = (T*)mkl_malloc(cRow * cCol * sizeof(T), 256);
-      generateDenseMatrix(layout_, b[i], bRow, bCol, maxNum);
-    }
-    sparse_matrix_t* a = new sparse_matrix_t[total_batch_size];
-    sparse_matrix_t* a2 = new sparse_matrix_t[total_batch_size];
-    sparse_matrix_t* resMatrix = new sparse_matrix_t[total_batch_size];
-    for (int i = 0; i < total_batch_size; i++){     //create csr handle (no half or quadruple precision supported from MKL)
-      if constexpr(is_same_v<T, float>){
-        mkl_sparse_s_create_csr(&a[i], SPARSE_INDEX_BASE_ZERO, aRow, aCol, m1.rowPtr[i], m1.rowPtr[i]+1, m1.columns[i], m1.values[i]);
-        mkl_sparse_s_create_csr(&a2[i], SPARSE_INDEX_BASE_ZERO, a2Row, a2Col, m2.rowPtr[i], m2.rowPtr[i]+1, m2.columns[i], m2.values[i]);
-      }
-      else if constexpr(is_same_v<T, double>){
-        mkl_sparse_d_create_csr(&a[i], SPARSE_INDEX_BASE_ZERO, aRow, aCol, m1.rowPtr[i], m1.rowPtr[i]+1, m1.columns[i], m1.values[i]);
-        mkl_sparse_d_create_csr(&a2[i], SPARSE_INDEX_BASE_ZERO, a2Row, a2Col, m2.rowPtr[i], m2.rowPtr[i]+1, m2.columns[i], m2.values[i]);
-      }
-    }
-    
-    double t0 = omp_get_wtime();
-    #pragma omp parallel for if (parallel_ == 1)
-    for (int i = 0; i < total_batch_size; i++){         //run sparse x dense matrix multiplication 
-      if constexpr(is_same_v<T, float>){
-        mkl_sparse_s_mm(opr, 1.0, a[i], descrA, layout_b, b[i], cCol, ldb, 0.0, c[i], ldc);
-      }
-      else if constexpr(is_same_v<T, double>){
-        mkl_sparse_d_mm(opr, 1.0, a[i], descrA, layout_b, b[i], cCol, ldb, 0.0, c[i], ldc);
-      }
-    }
-    // obtainCSRandPrint<T>(a[0], aRow, aCol);
-    // if (layout_ == 1){
-    // for (int i = 0; i < bRow; i++) {
-    //     for (int j = 0; j < bCol; j++) {
-    //         std::cout << b[0][j * bRow + i] << " ";
-    //     }
-    //     std::cout << std::endl;
-    // }
-    // cout << endl;
-    //   for (int i = 0; i < cRow; i++) {
-    //       for (int j = 0; j < cCol; j++) {
-    //           std::cout << c[0][j * cRow + i] << " ";
-    //       }
-    //       std::cout << std::endl;
-    //   }
-    // }
-    // else if (layout_ == 0){
-    //   for (int i = 0; i < bRow; i++) {
-    //     for (int j = 0; j < bCol; j++) {
-    //         std::cout << b[0][i * bCol + j] << " ";
-    //     }
-    //     std::cout << std::endl;
-    // }
-    // cout << endl;
-    //   for (int i = 0; i < cRow; i++) {
-    //     for (int j = 0; j < cCol; j++) {
-    //         std::cout << c[0][i * cCol + j] << " ";
-    //     }
-    //     std::cout << std::endl;
-    // }
-    // }
-    double t1 = omp_get_wtime();
-    cout << "time for sparse matrix * dense matrix operation: " <<  t1 - t0 << endl;
-    
     t0 = omp_get_wtime();
-    #pragma omp parallel for if (parallel_ == 1)
+    #pragma omp parallel for if (parallel_ == 1)      //run sparse x sparse matrix multiplication on a and bSparse, and store results in resMatrix
     for (int i = 0; i < total_batch_size; i++){
-      mkl_sparse_spmm(opr, a[i], a2[i], &resMatrix[i]);
+      if constexpr(is_same_v<T, float> || is_same_v<T, double>) {
+        mkl_sparse_spmm(opr, a[i], bSparse[i], &resMatrix[i]);
+      }
     }
     t1 = omp_get_wtime();
     cout << "Time for sparse matrix * sparse matrix operation: " << t1 - t0 << endl;
-  
-    // obtainCSRandPrint<T>(a[0], aRow, aCol);
-    // obtainCSRandPrint<T>(a2[0], a2Row, a2Col);
-    // obtainCSRandPrint<T>(resMatrix[0], aRow, aCol);
-    for (int j = 0; j < total_batch_size; j++){
-      mkl_sparse_destroy(a[j]);
-      mkl_sparse_destroy(a2[j]);
-      mkl_sparse_destroy(resMatrix[j]);
-      mkl_free(c[j]);
-      mkl_free(b[j]);
-      delete [] m1.values[j];
-      delete [] m1.columns[j];
-      delete [] m1.rowPtr[j];
-      delete [] m2.values[j];
-      delete [] m2.columns[j];
-      delete [] m2.rowPtr[j];
+
+    t0 = omp_get_wtime();
+    #pragma omp parallel for if (parallel_ == 1)      //run sparse x sparse matrix multiplication on a and bSparse, and store results in resMatrix
+    for (int i = 0; i < total_batch_size; i++){
+      if constexpr(is_same_v<T, float>){
+        mkl_sparse_s_mv(opr, 1.0, a[i], descrA, x[i], 0.0, y[i]);
+      }
+      else if constexpr(is_same_v<T, double>){
+        mkl_sparse_d_mv(opr, 1.0, a[i], descrA, x[i], 0.0, y[i]);
+      }
     }
-    delete [] m2.values;
-    delete [] m2.columns;
-    delete [] m2.rowPtr;
-    delete [] m1.values;
-    delete [] m1.columns;
-    delete [] m1.rowPtr;
-    delete [] m1.nonZeros;
-    delete [] m1.nonZeroCount;
-    delete [] m2.nonZeros;
-    delete [] m2.nonZeroCount;
+    t1 = omp_get_wtime();
+    cout << "Time for sparse matrix * vector operation: " << t1 - t0 << endl;
+}
+template <typename T>
+void sparse_blas_CSR_mygemm_gemv(const int total_batch_size, const int parallel_, const CSRMatrix<T>& m1, const CSRMatrix<T>& m2, const int aRow, const int aCol, const int bRow, const int bCol, const T* const* x, T** &y, const int xlen)
+{
+  // PrintCSRMatrix(m1, aRow, aCol);
+  // PrintCSRMatrix(m2, bRow, bCol);
+  double t0 = omp_get_wtime();
+  multiplyCSRSparseMatrices(m1, m2, aRow, aCol, bRow, bCol, total_batch_size, parallel_);
+  double t1 = omp_get_wtime();
+  cout << "Time for sparse matrix * sparse matrix operation: " << t1 - t0 << endl;
+
+  t0 = omp_get_wtime();
+  CSRMVMultiply(m1, x, y, total_batch_size, xlen, parallel_);
+  t1 = omp_get_wtime();
+  cout << "Time for sparse matrix * vector operation: " << t1 - t0 << endl;
+
+  
+}
+
+template <typename T>
+void sparse_blas_CSC_mygemm_gemv(const int total_batch_size, const int parallel_, const CSCMatrix<T>& m1, const CSCMatrix<T>& m2, const int aRow, const int aCol, const int bRow, const int bCol, const T* const* x, T** &y, const int xlen)
+{
+  // PrintCSCMatrix(m1, aRow, aCol);
+  // PrintCSCMatrix(m2, bRow, bCol);
+  double t0 = omp_get_wtime();
+  multiplyCSCSparseMatrices(m1, m2, aRow, aCol, bRow, bCol, total_batch_size, parallel_);
+  double t1 = omp_get_wtime();
+  cout << "Time for sparse matrix * sparse matrix operation: " << t1 - t0 << endl;
+  
+  t0 = omp_get_wtime();
+  CSCMVMultiply(m1, x, y, total_batch_size, xlen, parallel_);
+  t1 = omp_get_wtime();
+  cout << "Time for sparse matrix * vector operation: " << t1 - t0 << endl;
+  
+}
+
+template <typename T>
+void ProcessandPerformSparseBLASOperations(const int type, const int total_batch_size, const int m_, const int n_, const int k_,  const int transA_, const int layout_, const int maxNum, const int parallel_){
+    //type 0 = CSR, type 1 = CSC
+    if (type == 0 || type == 1){
+      int aRow = m_, aCol = k_;
+      sparse_operation_t opr;
+      opr = transA_ == 0 ? SPARSE_OPERATION_NON_TRANSPOSE : SPARSE_OPERATION_TRANSPOSE;     //transpose if transA is 1, otherwise don't
+      int xlen = opr == SPARSE_OPERATION_NON_TRANSPOSE ? k_ : m_;
+      int ylen = opr == SPARSE_OPERATION_NON_TRANSPOSE ? m_ : k_;
+      T **b = new T*[total_batch_size];
+      T **c = new T*[total_batch_size];
+      T **x = new T*[total_batch_size];
+      T **y = new T*[total_batch_size];
+      
+      struct matrix_descr descrA;
+      descrA.type = SPARSE_MATRIX_TYPE_GENERAL;       //type general means the matrix will be processed as is
+      sparse_layout_t layout_b;
+      layout_b = layout_ == 0 ? SPARSE_LAYOUT_ROW_MAJOR : SPARSE_LAYOUT_COLUMN_MAJOR;     //column or row major depending on layout
+
+      int ldb, ldc, bRow, bCol, cRow, cCol;
+      if (layout_b == SPARSE_LAYOUT_COLUMN_MAJOR){          //set row and col for b and c based on the operation and layout
+        if (opr == SPARSE_OPERATION_NON_TRANSPOSE){
+          bRow = ldb = k_;
+          cRow = ldc = m_;
+        }
+        else{
+          bRow = ldb = m_;
+          cRow = ldc = k_;
+        }
+        bCol = n_;
+        cCol = n_;
+      }
+      else if (layout_b == SPARSE_LAYOUT_ROW_MAJOR){
+        if (opr == SPARSE_OPERATION_NON_TRANSPOSE){
+          bRow = aCol;
+          cRow = aRow;
+        }
+        else{
+          bRow = aRow;
+          cRow = aCol;
+        }
+        bCol = ldb = n_;
+        cCol = ldc = n_;
+      }
+      for (int i = 0; i < total_batch_size; i++){       //allocate space and randomly generate dense matrix B, dense matrix C is used to store the results
+        b[i] = (T*)mkl_malloc(bRow * bCol * sizeof(T), 256);
+        c[i] = (T*)mkl_malloc(cRow * cCol * sizeof(T), 256);
+        x[i] = (T*)mkl_malloc(xlen * sizeof(T), 256);
+        y[i] = (T*)mkl_malloc(ylen * sizeof(T), 256);
+        generateDenseMatrix(layout_, b[i], bRow, bCol, maxNum);
+        generateVector(x[i], xlen, maxNum);
+      }
+      sparse_matrix_t* a = new sparse_matrix_t[total_batch_size];
+      sparse_matrix_t* bSparse = new sparse_matrix_t[total_batch_size];
+      sparse_matrix_t* resMatrix = new sparse_matrix_t[total_batch_size];
+      if (type == 0){     //CSR matrix format
+        CSRMatrix<T> m1(total_batch_size);
+        ProcessCSRMatrix(m1, total_batch_size, m_, k_, maxNum);
+        CSRMatrix<T> m2(total_batch_size);
+        ProcessCSRMatrix(m2, total_batch_size, bRow, bCol, maxNum);
+        for (int i = 0; i < total_batch_size; i++){     //create csr handle (no half or quadruple precision supported from MKL)
+          if constexpr(is_same_v<T, float>){
+            mkl_sparse_s_create_csr(&a[i], SPARSE_INDEX_BASE_ZERO, aRow, aCol, m1.rowPtr[i], m1.rowPtr[i]+1, m1.columns[i], m1.values[i]);
+            mkl_sparse_s_create_csr(&bSparse[i], SPARSE_INDEX_BASE_ZERO, bRow, bCol, m2.rowPtr[i], m2.rowPtr[i]+1, m2.columns[i], m2.values[i]);
+          }
+          else if constexpr(is_same_v<T, double>){
+            mkl_sparse_d_create_csr(&a[i], SPARSE_INDEX_BASE_ZERO, aRow, aCol, m1.rowPtr[i], m1.rowPtr[i]+1, m1.columns[i], m1.values[i]);
+            mkl_sparse_d_create_csr(&bSparse[i], SPARSE_INDEX_BASE_ZERO, bRow, bCol, m2.rowPtr[i], m2.rowPtr[i]+1, m2.columns[i], m2.values[i]);
+          }
+        }
+        if constexpr(is_same_v<T, float> || is_same_v<T, double>){
+          sparse_blas_gemm_gemv<T>(type, opr, descrA, layout_b, parallel_, total_batch_size, cCol, ldb, ldc, a, b, c, bSparse, resMatrix, x, y);
+        }
+        else if constexpr(is_same_v<T, boost::multiprecision::float128> || is_same_v<T, MKL_F16>){
+          if (opr == SPARSE_OPERATION_TRANSPOSE){
+            sparse_blas_CSR_mygemm_gemv<T>(total_batch_size, parallel_, transposeCSRMatrix(m1, aRow, aCol, total_batch_size), m2, aCol, aRow, bRow, bCol, x, y, xlen);
+          }
+          else{
+            sparse_blas_CSR_mygemm_gemv<T>(total_batch_size, parallel_, m1, m2, aRow, aCol, bRow, bCol, x, y, xlen);
+          }
+        }
+        for (int j = 0; j < total_batch_size; j++){
+          delete [] m1.values[j];
+          delete [] m1.columns[j];
+          delete [] m1.rowPtr[j];
+          delete [] m2.values[j];
+          delete [] m2.columns[j];
+          delete [] m2.rowPtr[j];
+        }
+          delete [] m1.values;
+          delete [] m1.columns;
+          delete [] m1.rowPtr;
+          delete [] m1.nonZeros;
+          delete [] m1.nonZeroCount;
+          delete [] m2.nonZeros;
+          delete [] m2.nonZeroCount;
+          delete [] m2.values;
+          delete [] m2.columns;
+          delete [] m2.rowPtr;
+      }
+      else if (type == 1){   //CSC matrix format
+        CSCMatrix<T> m1(total_batch_size);
+        ProcessCSCMatrix(m1, total_batch_size, m_, k_, maxNum);
+        CSCMatrix<T> m2(total_batch_size);
+        ProcessCSCMatrix(m2, total_batch_size, bRow, bCol, maxNum);
+        for (int i = 0; i < total_batch_size; i++){     //create csr handle (no half or quadruple precision supported from MKL)
+          if constexpr(is_same_v<T, float>){
+            mkl_sparse_s_create_csc(&a[i], SPARSE_INDEX_BASE_ZERO, aRow, aCol, m1.colPtr[i], m1.colPtr[i]+1, m1.rows[i], m1.values[i]);
+            mkl_sparse_s_create_csc(&bSparse[i], SPARSE_INDEX_BASE_ZERO, bRow, bCol, m2.colPtr[i], m2.colPtr[i]+1, m2.rows[i], m2.values[i]);
+          }
+          else if constexpr(is_same_v<T, double>){
+            mkl_sparse_d_create_csc(&a[i], SPARSE_INDEX_BASE_ZERO, aRow, aCol, m1.colPtr[i], m1.colPtr[i]+1, m1.rows[i], m1.values[i]);
+            mkl_sparse_d_create_csc(&bSparse[i], SPARSE_INDEX_BASE_ZERO, bRow, bCol, m2.colPtr[i], m2.colPtr[i]+1, m2.rows[i], m2.values[i]);
+          }
+        }
+        if constexpr(is_same_v<T, float> || is_same_v<T, double>){
+          sparse_blas_gemm_gemv<T>(type, opr, descrA, layout_b, parallel_, total_batch_size, cCol, ldb, ldc, a, b, c, bSparse, resMatrix, x, y);
+        } 
+        else if constexpr(is_same_v<T, boost::multiprecision::float128> || is_same_v<T, MKL_F16>){
+          if (opr == SPARSE_OPERATION_TRANSPOSE){
+            sparse_blas_CSC_mygemm_gemv<T>(total_batch_size, parallel_, transposeCSCMatrix(m1, aRow, aCol, total_batch_size), m2, aCol, aRow, bRow, bCol, x, y, xlen);
+          }
+          else{
+            sparse_blas_CSC_mygemm_gemv<T>(total_batch_size, parallel_, m1, m2, aRow, aCol, bRow, bCol, x, y, xlen);
+          }
+        }
+
+        for (int j = 0; j < total_batch_size; j++){
+          delete [] m1.values[j];
+          delete [] m1.colPtr[j];
+          delete [] m1.rows[j];
+          delete [] m2.values[j];
+          delete [] m2.rows[j];
+          delete [] m2.colPtr[j];
+        }
+          delete [] m1.values;
+          delete [] m1.rows;
+          delete [] m1.colPtr;
+          delete [] m1.nonZeros;
+          delete [] m1.nonZeroCount;
+          delete [] m2.nonZeros;
+          delete [] m2.nonZeroCount;
+          delete [] m2.values;
+          delete [] m2.rows;
+          delete [] m2.colPtr;
+      }
+      for (int j = 0; j < total_batch_size; j++){
+        if constexpr(is_same_v<T, float> || is_same_v<T, double>){
+          mkl_sparse_destroy(a[j]);
+          mkl_sparse_destroy(bSparse[j]);
+          mkl_sparse_destroy(resMatrix[j]);
+        }
+        mkl_free(c[j]);
+        mkl_free(b[j]);
+        mkl_free(x[j]);
+        mkl_free(y[j]);
+      }
+      delete [] a;
+      delete [] bSparse;
+      delete [] resMatrix;
+      delete [] b;
+      delete [] c;
+      delete [] x;
+      delete [] y;
+  }
 }
 #endif  

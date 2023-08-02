@@ -22,7 +22,6 @@
 #include <cstdlib>
 
 using namespace std;
-
 /*
 args:
 type - 0 for single precision GEMM/GEMV (BLAS), 1 for double precision GEMM/GEMV (BLAS), 2 for half precision GEMM (BLAS), 31 for dense matrix (2d vector implementation) multiplication, 32 for sparse matrix (map implementation) multiplication
@@ -38,13 +37,14 @@ parallel - 1 for parallel
 incx - increment for vector x
 incy - increment for vector y
 */
-typedef float myType;
+typedef boost::multiprecision::float128 myType;
 const int maxNum = 16;
 
 int main(int argc, char* argv[]) {
   int type, m_, n_, k_, batch_count, batch_size_, layout_ = 0, transA_ = 0, transB_ = 0, parallel_ = 0, incx_ = 1, incy_ = 1;
   if (argc > 1) type = atoi(argv[1]);               //obtain information required to run tests
-  if (argc > 2) batch_count = atoi(argv[2]);
+  if (argc > 2) batch_count = 
+  atoi(argv[2]);
   if (argc > 3) batch_size_ = atoi(argv[3]);
   if (argc > 4) m_ = atoi(argv[4]);
   if (argc > 5) n_ = atoi(argv[5]);
@@ -127,7 +127,10 @@ int main(int argc, char* argv[]) {
     performSparseMatrixOperations<myType>(m_, n_, k_, total_batch_size, parallel_, maxNum);
   }
   else if (type == 41){
-    PerformCSRSparseBLASOperations<myType>(total_batch_size, m_, n_, k_, transA_, layout_, maxNum, parallel_);
+    ProcessandPerformSparseBLASOperations<myType>(0, total_batch_size, m_, n_, k_, transA_, layout_, maxNum, parallel_);
+  }
+  else if (type == 42){
+    ProcessandPerformSparseBLASOperations<myType>(1, total_batch_size, m_, n_, k_, transA_, layout_, maxNum, parallel_);
   }
   return 0;
 }
