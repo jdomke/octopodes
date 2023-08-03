@@ -1,5 +1,5 @@
 template <typename T>
-void performDenseMatrixOperations(const int m_, const int n_, const int k_, const int total_batch_size, const int parallel_, const int maxNum){
+void performDenseMatrixOperations(const int m_, const int n_, const int k_, const int batch_size, const int total_batch_size, const int parallel_, const int maxNum){
     DenseMatrix <T> ** a = new DenseMatrix<T>*[total_batch_size]; 
     DenseMatrix <T> ** b = new DenseMatrix<T>*[total_batch_size];
     DenseMatrix <T> ** c = new DenseMatrix<T>*[total_batch_size];
@@ -39,14 +39,16 @@ void performDenseMatrixOperations(const int m_, const int n_, const int k_, cons
     }
     double t1 = omp_get_wtime();
 
-    cout << "Time for one matrix matrix multiplication operation with Dense Matrix: " << t1 - t0 << endl;
+    cout << "Time for one matrix matrix multiplication operation with Dense Matrix: " << t1 - t0 << " ";
+    obtainGflopsEFF<T>(t1-t0, total_batch_size, batch_size, m_, n_, k_);
     t0 = omp_get_wtime();
-    #pragma omp prallel for schedule(static) if (parallel_ == 1)
+    #pragma omp parallel for schedule(static) if (parallel_ == 1)
     for (int i = 0; i < total_batch_size; i++){
         y[i] = (*a[i]) * x[i];
     }
     t1 = omp_get_wtime();
-    cout << "Time for one matrix vector multiplication operation with Dense Matrix: " << t1 - t0 << endl;
+    cout << "Time for one matrix vector multiplication operation with Dense Matrix: " << t1 - t0 << " ";
+    obtainGflopsEFF<T>(t1-t0, total_batch_size, batch_size, m_, n_, k_);
     for (int i = 0; i < total_batch_size; i++) {
       delete a[i];
       delete b[i];
@@ -58,7 +60,7 @@ void performDenseMatrixOperations(const int m_, const int n_, const int k_, cons
 }
 
 template <typename T>
-void performSparseMatrixOperations(const int m_, const int n_, const int k_, const int total_batch_size, const int parallel_, const int maxNum){
+void performSparseMatrixOperations(const int m_, const int n_, const int k_, const int batch_size, const int total_batch_size, const int parallel_, const int maxNum){
     SparseMatrix <T> ** a = new SparseMatrix<T>*[total_batch_size]; 
     SparseMatrix <T> ** b = new SparseMatrix<T>*[total_batch_size];
     SparseMatrix <T> ** c = new SparseMatrix<T>*[total_batch_size];
@@ -82,14 +84,16 @@ void performSparseMatrixOperations(const int m_, const int n_, const int k_, con
       *c[i] = (*a[i]) * (*b[i]);
     }
     double t1 = omp_get_wtime();
-    cout << "Time for one matrix multiplication operation with Sparse Matrix: " << t1 - t0 << endl;    
+    cout << "Time for one matrix multiplication operation with Sparse Matrix: " << t1 - t0 << " ";  
+    obtainGflopsEFF<T>(t1-t0, total_batch_size, batch_size, m_, n_, k_);  
     t0 = omp_get_wtime();
     #pragma omp prallel for schedule(static) if (parallel_ == 1)
     for (int i = 0; i < total_batch_size; i++){
         y[i] = (*a[i]) * x[i];
     }
     t1 = omp_get_wtime();
-    cout << "Time for one matrix vector multiplication operation with Sparse Matrix: " << t1 - t0 << endl;
+    cout << "Time for one matrix vector multiplication operation with Sparse Matrix: " << t1 - t0 << " ";
+    obtainGflopsEFF<T>(t1-t0, total_batch_size, batch_size, m_, n_, k_);
     for (int i = 0; i < total_batch_size; i++) {
       delete a[i];
       delete b[i];
@@ -100,26 +104,24 @@ void performSparseMatrixOperations(const int m_, const int n_, const int k_, con
     delete[] c;
 }
 template <typename T>
-CSRMatrix<T> multiplyCSRSparseMatrices(const CSRMatrix<T>& A, const CSRMatrix<T>& B, const int aRow, const int aCol, const int bRow, const int bCol, const int total_batch_size, const int parallel_) {
-    CSRMatrix<T> result(total_batch_size);
-    ProcessCSRMatrix(result, 1, aRow, bCol, 20);
+void multiplyCSRSparseMatrices(const CSRMatrix<T>& A, const CSRMatrix<T>& B, CSRMatrix<T>& result, const int aRow, const int aCol, const int bRow, const int bCol, const int total_batch_size, const int parallel_) {
+    int A_rows = aRow;
+    int B_cols = bCol;
+    for (int batch = 0; batch < total_batch_size; batch++){
+      result.values[batch] = new T[aRow*bCol];
+      result.columns[batch] = new int[aRow*bCol];
+      result.rowPtr[batch] = new int[A_rows + 1];
+      result.nonZeros[batch] = 0;
+      result.nonZeroCount[batch] = A_rows * B_cols; // Maximum possible non-zero elements in the result
+      // Initialize the row pointer to zero
+      result.rowPtr[batch][0] = 0;
+      for (int i = 1; i < A_rows; ++i) {
+        result.rowPtr[batch][i] = A_rows * B_cols;  // initialize rowPtr as the max value
+      }
+    }
     #pragma omp parallel for schedule(static) if (parallel_ == 1)
     for (int batch = 0; batch < total_batch_size; batch++) {
-        int A_rows = aRow;
-        int B_cols = bCol;
         int B_nonZeros = B.nonZeroCount[batch];
-
-        result.nonZeros[batch] = 0;
-        result.nonZeroCount[batch] = A_rows * B_cols; // Maximum possible non-zero elements in the result
-        result.values[batch] = new T[result.nonZeroCount[batch]];
-        result.columns[batch] = new int[result.nonZeroCount[batch]];
-        result.rowPtr[batch] = new int[A_rows + 1];
-
-        // Initialize the row pointer to zero
-        result.rowPtr[batch][0] = 0;
-        for (int i = 1; i < A_rows; ++i) {
-          result.rowPtr[batch][i] = A_rows * B_cols;  // initialize rowPtr as the max value
-        }
         //matrix multiplication 
         int count = 0;      //number of elements
         int lastUp = 0;     //position of the last update to the row index
@@ -143,6 +145,8 @@ CSRMatrix<T> multiplyCSRSparseMatrices(const CSRMatrix<T>& A, const CSRMatrix<T>
                     }
                 }
                 if (sum != 0) {
+                  #pragma omp critical
+                  {
                     if (i != lastUp) {  // check if a new row has started by comparing I to the last row index update
                         result.rowPtr[batch][i] = count;
                         lastUp = i;       // change position of last index update
@@ -151,6 +155,7 @@ CSRMatrix<T> multiplyCSRSparseMatrices(const CSRMatrix<T>& A, const CSRMatrix<T>
                     result.columns[batch][count] = j;
                     result.nonZeros[batch]++;
                     count++;
+                  }
                 }
           }
         }
@@ -170,27 +175,31 @@ CSRMatrix<T> multiplyCSRSparseMatrices(const CSRMatrix<T>& A, const CSRMatrix<T>
 
         result.values[batch] = temp_values;
         result.columns[batch] = temp_columns;
-    }        
-    return result;
+    }      
 }
 template <typename T>
-CSCMatrix<T> multiplyCSCSparseMatrices(const CSCMatrix<T>& A, const CSCMatrix<T>& B, const int aRow, const int aCol, const int bRow, const int bCol, const int total_batch_size, const int parallel_) {
-    CSCMatrix<T> result(total_batch_size);
-    ProcessCSCMatrix(result, 1, aRow, bCol, 1);
-
+void multiplyCSCSparseMatrices(const CSCMatrix<T>& A, const CSCMatrix<T>& B, CSCMatrix<T>& result, const int aRow, const int aCol, const int bRow, const int bCol, const int total_batch_size, const int parallel_) {
+    int A_rows = aRow;
+    int B_cols = bCol;
+    for (int batch = 0; batch < total_batch_size; batch++){
+      result.values[batch] = new T[aRow * bCol];
+      result.rows[batch] = new int[aRow * bCol];
+      result.colPtr[batch] = new int[B_cols + 1];
+      result.colPtr[batch][0] = 0;
+    }
     #pragma omp parallel for schedule(static) if (parallel_ == 1)
     for (int batch = 0; batch < total_batch_size; batch++) {
-        int A_rows = aRow;
-        int B_cols = bCol;
+        // int A_rows = aRow;
+        // int B_cols = bCol;
         int A_nonZeros = A.nonZeros[batch];
         int B_nonZeros = B.nonZeros[batch];
         // Allocate memory for the output matrix
-        result.values[batch] = new T[A_rows * B_cols];
-        result.rows[batch] = new int[A_rows * B_cols];
-        result.colPtr[batch] = new int[B_cols + 1];
+        // result.values[batch] = new T[A_rows * B_cols];
+        // result.rows[batch] = new int[A_rows * B_cols];
+        // result.colPtr[batch] = new int[B_cols + 1];
 
         // Perform matrix multiplication
-        result.colPtr[batch][0] = 0;
+        // result.colPtr[batch][0] = 0;
         int count = 0;
 
         #pragma omp parallel for
@@ -244,5 +253,4 @@ CSCMatrix<T> multiplyCSCSparseMatrices(const CSCMatrix<T>& A, const CSCMatrix<T>
         result.values[batch] = temp_values;
         result.rows[batch] = temp_rows;
     }
-    return result;
 }

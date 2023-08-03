@@ -2,7 +2,6 @@
 #define RAND_GEN_H
 
 
-typedef boost::multiprecision::float128 float128;
 using namespace std;
                   //below code segment taken from common_func.c which comes with the installation of Intel oneAPI Math Kernel Library for use with cblas_hgemm() function
 typedef union {       
@@ -30,7 +29,6 @@ static float h2f(MKL_F16 x) {       //convert half precision to f16, taken from 
   src.raw = x;
   dst.raw = 0;
   dst.bits.sign = src.bits.sign;
-
   if (src.bits.exp == 0x01f) {
     dst.bits.exp = 0xff;
     if (src.bits.frac > 0) {
@@ -85,6 +83,27 @@ static MKL_F16 f2h(float x) { //convert f16 to half precision, taken from common
   }
 
   return dst.raw;
+}
+
+template <typename T> // code taken from https://github.com/wudu98/fugaku_batch_gemm/blob/master/benchmark/batch_gemm_benchmark.c
+double fp_peak(){ 
+    int vlen = 64 / sizeof(T);
+    int flop = vlen *  4;
+
+    int ncore;
+    #pragma omp parallel
+    #pragma omp master
+    ncore = omp_get_num_threads();
+
+    double gFlops = 2.0 * ncore * flop;
+    return gFlops;
+}
+
+template <typename T>
+void obtainGflopsEFF(double time, int total_batch_size, int batch_size, int m, int n, int k){ // code taken from https://github.com/wudu98/fugaku_batch_gemm/blob/master/benchmark/batch_gemm_benchmark.c
+  double gFlops = 2.0 * total_batch_size * batch_size * m * n * k / time * 1.e-9;
+  double ratio = gFlops / fp_peak<T>();
+  cout << "\n" << gFlops << " Gflops, at efficiency " << 100.*ratio << endl;
 }
 
 template <typename T>
@@ -317,62 +336,72 @@ void generateDenseMatrix(const int layout, T* &matrix, const int rows, const int
     }
   }
 }
-// template <typename T>
-// void PrintCSRMatrix(const CSRMatrix<T> m1,  const int m_, const int n_){
-//   //m1.rowPtr[i] = start of current row
-//   //m1.columns[rowPtr[i] + curCol] = at that row, the column corresponding to the one we're currently on. For instance, row = 2, rowPtr[i] points to the section in columns that corresponds to row 2, and then + curCol allows you to traverse the column
-//   //m1.values[rowPtr[i] + curCol] = value at that row and col
-//   // for (int j = 0; j < m_ ; j++){
-//   //   for (int i = m1.rowPtr[0][j]; i < m1.rowPtr[0][j+1]; i++){
-//   //     cout << "row start at: " <<  m1.rowPtr[0][j] <<  " row: " << j << " value: " << m1.values[0][i] << "  columns: " << m1.columns[0][i] << endl;
-//   //   }
-//   // }
-//   cout << "Matrix: " << endl;
-//   for (int i = 0; i < m_; i++){
-//     int curCol = 0;
-//     for (int j = 0; j < n_; j++){
-//       if (m1.columns[0][m1.rowPtr[0][i] + curCol] == j && m1.rowPtr[0][i] + curCol < m1.rowPtr[0][i+1]){
-//         cout <<  (m1.values[0][m1.rowPtr[0][i]+curCol]) << " "; 
-//         curCol++;
-//       }
-//       else{
-//         cout << "0" << " ";
-//       }
-//     }
-//     cout << endl;
-//   }
-// }
-// template <typename T>
-// void PrintCSCMatrix(const CSCMatrix<T>& m1, const int m_, const int n_) {
-//     // for (int j = 0; j < n_ ; j++){
-//     //   for (int i = m1.colPtr[0][j]; i < m1.colPtr[0][j+1]; i++){
-//     //     cout << "col start at: " <<  m1.colPtr[0][j] <<  " col: " << j << " value: " << m1.values[0][i] << "  rows: " << m1.rows[0][i] << endl;
-//     //   }
-//     // }
-//     cout << "Matrix:" << endl;
-//     int count = 0;
-//     for (int i = 0; i < m_; i++) {
-//         for (int j = 0; j < n_; j++) {
-//             bool found = false;
-//             for (int k = m1.colPtr[0][j]; k < m1.colPtr[0][j + 1]; k++) {
-//                 if (m1.rows[0][k] == i) {
-//                     cout << (m1.values[0][k]) << " ";
-//                     found = true;
-//                     break;
-//                 }
-//             }
-//             if (!found) {
-//                 cout << "0 ";
-//             }
-//         }
-//         cout << endl;
-//     }
-// }
+template <typename T>
+void PrintCSRMatrix(const CSRMatrix<T> m1,  const int m_, const int n_){
+  //m1.rowPtr[i] = start of current row
+  //m1.columns[rowPtr[i] + curCol] = at that row, the column corresponding to the one we're currently on. For instance, row = 2, rowPtr[i] points to the section in columns that corresponds to row 2, and then + curCol allows you to traverse the column
+  //m1.values[rowPtr[i] + curCol] = value at that row and col
+  // for (int j = 0; j < m_ ; j++){
+  //   for (int i = m1.rowPtr[0][j]; i < m1.rowPtr[0][j+1]; i++){
+  //     cout << "row start at: " <<  m1.rowPtr[0][j] <<  " row: " << j << " value: " << m1.values[0][i] << "  columns: " << m1.columns[0][i] << endl;
+  //   }
+  // }
+  cout << "Matrix: " << endl;
+  for (int i = 0; i < m_; i++){
+    int curCol = 0;
+    for (int j = 0; j < n_; j++){
+      if (m1.columns[0][m1.rowPtr[0][i] + curCol] == j && m1.rowPtr[0][i] + curCol < m1.rowPtr[0][i+1]){
+        if constexpr(is_same_v<T, MKL_F16>){
+          cout <<  h2f(m1.values[0][m1.rowPtr[0][i]+curCol]) << " "; 
+        }
+        else{
+          cout <<  m1.values[0][m1.rowPtr[0][i]+curCol] << " ";
+        }
+        curCol++;
+      }
+      else{
+        cout << "0" << " ";
+      }
+    }
+    cout << endl;
+  }
+}
+template <typename T>
+void PrintCSCMatrix(const CSCMatrix<T>& m1, const int m_, const int n_) {
+    // for (int j = 0; j < n_ ; j++){
+    //   for (int i = m1.colPtr[0][j]; i < m1.colPtr[0][j+1]; i++){
+    //     cout << "col start at: " <<  m1.colPtr[0][j] <<  " col: " << j << " value: " << m1.values[0][i] << "  rows: " << m1.rows[0][i] << endl;
+    //   }
+    // }
+    cout << "Matrix:" << endl;
+    int count = 0;
+    for (int i = 0; i < m_; i++) {
+        for (int j = 0; j < n_; j++) {
+            bool found = false;
+            for (int k = m1.colPtr[0][j]; k < m1.colPtr[0][j + 1]; k++) {
+                if (m1.rows[0][k] == i) {
+                    if constexpr(is_same_v<T, MKL_F16>){
+                      cout << h2f(m1.values[0][k]) << " ";
+                    }
+                    else{
+                      cout << m1.values[0][k] << " ";
+                    }
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                cout << "0 ";
+            }
+        }
+        cout << endl;
+    }
+}
 
 template <typename T>
-CSRMatrix<T> transposeCSRMatrix(const CSRMatrix<T>& m1, const int m, const int n, int total_batch_size){
-    CSRMatrix<T> result(total_batch_size);
+void transposeCSRMatrix(const CSRMatrix<T>& m1, CSRMatrix<T>& result, const int m, const int n, int total_batch_size){
     for (int i = 0; i < total_batch_size; i++){
+        vector<int> rowPtr(n+2, 0);
         int resRow = n;
         int resCol = m;
         result.nonZeros[i] = m1.nonZeros[i];
@@ -381,29 +410,30 @@ CSRMatrix<T> transposeCSRMatrix(const CSRMatrix<T>& m1, const int m, const int n
         result.columns[i] = new int[result.nonZeros[i]];
         result.values[i] = new T[result.nonZeros[i]];
         //initialize rowPtr for all rows that would be covered
-        for (int j = 0; j < m1.nonZeros[i]; j++){                       //code logic taken from https://stackoverflow.com/questions/49395986/compressed-sparse-row-transpose
-            ++result.rowPtr[i][m1.columns[i][j] + 2];
+        for (int j = 0; j < m1.nonZeroCount[i]; j++){                       //code logic taken from https://stackoverflow.com/questions/49395986/compressed-sparse-row-transpose
+            ++rowPtr[m1.columns[i][j] + 2];
         } 
 
-        for (int j = 1; j < resRow+1; j++){
-            result.rowPtr[i][j] += result.rowPtr[i][j-1];
+        for (int j = 2; j < rowPtr.size(); j++){
+            rowPtr[j] += rowPtr[j-1];
         }   
         //loop through original m1 matrix and transpose by swapping row and column values
         for (int j = 0; j < m; j++){
             for (int k = m1.rowPtr[i][j]; k < m1.rowPtr[i][j+1]; k++){          
-                int index = result.rowPtr[i][m1.columns[i][k] + 1]++;
+                int index = rowPtr[m1.columns[i][k] + 1]++;
                 T val = m1.values[i][k];
                 result.values[i][index] = val;
                 result.columns[i][index] = j;
             }
         }
-
+      for (int j = 0; j < resRow+1; j++){
+        result.rowPtr[i][j] = rowPtr[j];
+      }
+      rowPtr.clear();
     }
-    return result;
 }
 template <typename T>
-CSCMatrix<T> transposeCSCMatrix(const CSCMatrix<T>& m1, const int m, const int n, const int total_batch_size) {
-    CSCMatrix<T> result(total_batch_size);
+void transposeCSCMatrix(const CSCMatrix<T>& m1, CSCMatrix<T>& result, const int m, const int n, const int total_batch_size) {
     for (int i = 0; i < total_batch_size; i++) {
         int resRow = n;
         int resCol = m;
@@ -413,11 +443,13 @@ CSCMatrix<T> transposeCSCMatrix(const CSCMatrix<T>& m1, const int m, const int n
         result.rows[i] = new int[result.nonZeros[i]];
         result.values[i] = new T[result.nonZeros[i]];
         
+        for (int j = 0; j < resCol+1; j++){
+             result.colPtr[i][j] = 0;
+        }
         // initialize colPtr for all columns that would be covered
         for (int j = 0; j < m1.nonZeros[i]; j++) {
             ++result.colPtr[i][m1.rows[i][j] + 1];
         }
-
         for (int j = 1; j < resCol + 1; j++) {
             result.colPtr[i][j] += result.colPtr[i][j - 1];
         }
@@ -437,6 +469,5 @@ CSCMatrix<T> transposeCSCMatrix(const CSCMatrix<T>& m1, const int m, const int n
             }
         }
     }
-    return result;
 }
 #endif
