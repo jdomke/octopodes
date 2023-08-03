@@ -6,6 +6,13 @@ octorl::CNNTest::CNNTest() {
     reset();
 }
 
+octorl::CNNTest::CNNTest(int s) {
+    seed = s;
+    
+    reset();
+
+}
+
 octorl::StepReturn octorl::CNNTest::step(int action) {
     steps++;
     StepReturn obs;

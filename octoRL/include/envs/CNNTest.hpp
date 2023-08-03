@@ -11,6 +11,7 @@ namespace octorl {
     class CNNTest : virtual public EnvironmentsBase {
         public:
             CNNTest();
+             CNNTest(int s);
             std::default_random_engine gen;
             std::uniform_real_distribution<float> distribution{std::uniform_real_distribution<float>(-0.6,-0.4)};
             StepReturn step(int action);
@@ -26,6 +27,7 @@ namespace octorl {
             static const int action_space_size = 3;
             static const int observation_space_size = 32*32*3;
             int steps;
+            int seed;
     };
 }
 

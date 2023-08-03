@@ -17,23 +17,30 @@ octorl::A2C::A2C(std::shared_ptr<octorl::EnvironmentsBase> environment, size_t b
     num_ranks = nr;
     local_size = buffer_size;   
     local_batch_size = std::ceil(batch/(nr-1));
-    /*if (torch::cuda::is_available()) {                                                                                                                                                                                     std::cout << "CUDA is available! Training on GPU." << std::endl;                                                                                                                                           
-        device = torch::kCUDA;                                                                                                                                                                                     
-    }*/   
+    if (torch::cuda::is_available()) {   
+        std::cout << "CUDA is available! Training on GPU." << std::endl;                                                                                                                                           
+    //    device = torch::kCUDA;                                                                                                                                                                                     
+    }   
     //local_memory_size = 400;
     local_memory_size = local_batch_size;
     
     entropy_param = 0.0001;
     critic = policy_model;
     actor = actor_model;
+    critic.to(device);
+    actor.to(device);
     octorl::loadstatedict2(critic, policy_model);
     octorl::loadstatedict2(actor, actor_model);
+    
+
     critic_optimizer = std::make_shared<torch::optim::Adam>(critic.parameters(), lr);
     actor_optimizer = std::make_shared<torch::optim::Adam>(actor.parameters(), lr);
     actor_optimizer->zero_grad();
     critic_optimizer->zero_grad();
-
+    rand_seed = seed;
     srand(seed);
+    gen.seed(rand_seed);
+    sample_gen.seed(rand_seed);
 
 }
 
@@ -49,8 +56,8 @@ void octorl::A2C::test() {
         avg_reward += obs.reward;
         int act;
         while(!obs.done) {
-    	    init_obs = obs.observation;
-	    act = action(obs.observation);
+	    //init_obs = obs.observation;
+	    act = action(obs.observation.to(device));
             obs = env->step(act);
             rewards += obs.reward;
             avg_reward += obs.reward;
@@ -119,15 +126,16 @@ void octorl::A2C::learnerRun() {
 }
 
 bool octorl::A2C::workerRun() {
-
-    auto init_obs = env->reset().observation;
-   
+   // std::cout<<"worker run\n";
+    auto init_obs = env->reset().observation.to(device);
     auto act = action(init_obs);
+    //std::cout<<"Acted\n";
     auto obs = env->step(act);
     memory.push_back(octorl::ActorMemory(init_obs, critic.forward(init_obs).to(device).detach(), act, env->getActionSize(), obs.reward, obs.done));
     int i = 1;
     while(!obs.done) {
-
+      //  std::cout<<"siomming\n";
+	    obs.observation.to(device);
         init_obs = obs.observation;
         act = action(init_obs);
         obs = env->step(act);
@@ -138,7 +146,7 @@ bool octorl::A2C::workerRun() {
        // std::cout<<memory.size()<<std::endl;
        // std::cout<<"Goal: "<<obs.goal<<std::endl;
     }
-
+    //std::cout<<"post sim\n";    
     calculateQValAddLocal();
 
    // std::cout<<memory.size()<<std::endl;
@@ -176,7 +184,6 @@ void octorl::A2C::train() {
     critic_optimizer->zero_grad();        
     
     std::vector<torch::Tensor> obs_vec;
-
     torch::Tensor q_val = torch::zeros({(int)batch_memory.size()}).to(device);
     torch::Tensor advantage = torch::zeros({(int)batch_memory.size()}).to(device);
     torch::Tensor mask = torch::zeros({(int)batch_memory.size(),env->getActionSize()}).to(device);
@@ -213,8 +220,8 @@ int octorl::A2C::action(torch::Tensor state) {
     //torch::Tensor out = actor.forward(state).to(device).contiguous();
     torch::Tensor out = actor.forward(state).contiguous();
 
-    std::random_device rd;
-    std::mt19937 gen(rd());
+    //std::random_device rd;
+    //std::mt19937 gen(rand_seed);
     std::discrete_distribution<> d(out.data_ptr<float>(), out.data_ptr<float>() + out.numel());
     
     return d(gen);
@@ -253,8 +260,8 @@ void octorl::A2C::sendBatch() {
     int b = 0;
 
     std::deque<std::shared_ptr<float>> sample_set;
-    auto gen1 = std::mt19937 {std::random_device {}()};
-    std::sample(local_memory.begin(), local_memory.end(),std::back_inserter(sample_set), local_batch_size, gen1);
+    //auto gen1 = std::mt19937 {std::random_device {}()};
+    std::sample(local_memory.begin(), local_memory.end(),std::back_inserter(sample_set), local_batch_size, sample_gen);
     
     for(int i = 0; i < sample_set.size(); i++) {
         for(int j = 0; j < env->getObservationSize() + 4; j++){

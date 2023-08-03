@@ -37,8 +37,6 @@ void a2cConfigureAndRun(const Setting& root) {
     const Setting& actor = a2c_settings["actor"];
     const Setting& critic = a2c_settings["critic"];
 
-    octorl::Policy actor_net = modelParse(actor);
-    octorl::Policy critic_net = modelParse(critic);
     
     int rank, numranks, buffer_size = 100000, episode_count = 500, seed = 29384, batch = 32;
     float learning_rate = 0.001, gamma = 0.99;
@@ -50,21 +48,23 @@ void a2cConfigureAndRun(const Setting& root) {
     a2c_settings.lookupValue("batch_size", batch);
     a2c_settings.lookupValue("learning_rate", learning_rate);
     a2c_settings.lookupValue("gamma", gamma);
+    octorl::Policy actor_net = modelParse(actor,seed);
+    octorl::Policy critic_net = modelParse(critic,seed);
     MPI_Comm_size(MPI_COMM_WORLD, &numranks);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     if(env == "MOUNTAINCAR") {
-        octorl::A2C async(make_shared<octorl::MountainCar>(), buffer_size, critic_net, actor_net, gamma, episode_count,
+        octorl::A2C async(make_shared<octorl::MountainCar>(seed), buffer_size, critic_net, actor_net, gamma, episode_count,
             seed, learning_rate, batch, rank, numranks); 
         async.run();
     }
     else if(env == "CARTPOLE") {
-        octorl::A2C async(make_shared<octorl::Cartpole>(), buffer_size, critic_net, actor_net, gamma, episode_count,
+        octorl::A2C async(make_shared<octorl::Cartpole>(seed), buffer_size, critic_net, actor_net, gamma, episode_count,
             seed, learning_rate, batch, rank, numranks);
         async.run();
     }
     else if(env == "CNNTEST") {
-        octorl::A2C async(make_shared<octorl::CNNTest>(), buffer_size, critic_net, actor_net, gamma, episode_count,
+        octorl::A2C async(make_shared<octorl::CNNTest>(seed), buffer_size, critic_net, actor_net, gamma, episode_count,
             seed, learning_rate, batch, rank, numranks);
         async.run();
     }
@@ -77,8 +77,6 @@ void a3cConfigureAndRun(const libconfig::Setting& root) {
     const Setting& actor = a3c_settings["actor"];
     const Setting& critic = a3c_settings["critic"];
 
-    octorl::Policy actor_net = modelParse(actor);
-    octorl::Policy critic_net = modelParse(critic);
 
     int rank, numranks, buffer_size = 100000, episode_count = 500, seed = 29384, batch = 32;
     float learning_rate = 0.001, gamma = 0.99;
@@ -90,21 +88,23 @@ void a3cConfigureAndRun(const libconfig::Setting& root) {
     a3c_settings.lookupValue("batch_size", batch);
     a3c_settings.lookupValue("learning_rate", learning_rate);
     a3c_settings.lookupValue("gamma", gamma);
+    octorl::Policy actor_net = modelParse(actor,seed);
+    octorl::Policy critic_net = modelParse(critic,seed);
     MPI_Comm_size(MPI_COMM_WORLD, &numranks);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     if(env == "MOUNTAINCAR") {
-        octorl::A3C async(make_shared<octorl::MountainCar>(), buffer_size, critic_net, actor_net, gamma, episode_count,
+        octorl::A3C async(make_shared<octorl::MountainCar>(seed), buffer_size, critic_net, actor_net, gamma, episode_count,
             seed, learning_rate, batch, rank, numranks); 
         async.run();
     }
     else if(env == "CARTPOLE") {
-        octorl::A3C async(make_shared<octorl::Cartpole>(), buffer_size, critic_net, actor_net, gamma, episode_count,
+        octorl::A3C async(make_shared<octorl::Cartpole>(seed), buffer_size, critic_net, actor_net, gamma, episode_count,
             seed, learning_rate, batch, rank, numranks);
         async.run();
     }
     else if(env == "CNNTEST") {
-        octorl::A3C async(make_shared<octorl::CNNTest>(), buffer_size, critic_net, actor_net, gamma, episode_count,
+        octorl::A3C async(make_shared<octorl::CNNTest>(seed), buffer_size, critic_net, actor_net, gamma, episode_count,
             seed, learning_rate, batch, rank, numranks);
         async.run();
     }
@@ -117,7 +117,6 @@ void dqnAsyncConfigureAndRun(const libconfig::Setting& root) {
     const Setting& dqn_settings = root["dqnAsync"];
     const Setting& policy = dqn_settings["policy"];
     
-    octorl::Policy policy_net = modelParse(policy);
 
     int rank, numranks, buffer_size = 100000, episode_count = 500, seed = 29384, batch = 32, batch_freq = 32;
     float learning_rate = 0.001, gamma = 0.99, epsilon = 1, epsilon_min = 0.01, decay = 0.95;
@@ -134,21 +133,22 @@ void dqnAsyncConfigureAndRun(const libconfig::Setting& root) {
     dqn_settings.lookupValue("epsilon", epsilon);
     dqn_settings.lookupValue("epsilon_min", epsilon_min);
     dqn_settings.lookupValue("epsilon_decay", decay);
+    octorl::Policy policy_net = modelParse(policy,seed);
     MPI_Comm_size(MPI_COMM_WORLD, &numranks);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     if(env == "MOUNTAINCAR") {
-        octorl::DqnAsync async(make_shared<octorl::MountainCar>(), buffer_size, policy_net, gamma, epsilon, decay, epsilon_min, 
+        octorl::DqnAsync async(make_shared<octorl::MountainCar>(seed), buffer_size, policy_net, gamma, epsilon, decay, epsilon_min, 
             episode_count, seed, learning_rate, batch, batch_freq,rank, numranks); 
         async.run();
     }
     else if(env == "CARTPOLE") {
-        octorl::DqnAsync async(make_shared<octorl::Cartpole>(), buffer_size, policy_net, gamma, epsilon, decay, epsilon_min, 
+        octorl::DqnAsync async(make_shared<octorl::Cartpole>(seed), buffer_size, policy_net, gamma, epsilon, decay, epsilon_min, 
             episode_count, seed, learning_rate, batch, batch_freq,rank, numranks); 
         async.run();
     }
     else if(env == "CNNTEST") {
-        octorl::DqnAsync async(make_shared<octorl::CNNTest>(), buffer_size, policy_net, gamma, epsilon, decay, epsilon_min, 
+        octorl::DqnAsync async(make_shared<octorl::CNNTest>(seed), buffer_size, policy_net, gamma, epsilon, decay, epsilon_min, 
             episode_count, seed, learning_rate, batch, batch_freq,rank, numranks); 
         async.run();
     }
@@ -180,11 +180,11 @@ octorl::LayerInfo layerParse(const Setting& layer) {
     return octorl::LayerInfo(type, activation, label, input, output, kernel_size, stride, padding, dilation);
 }
 
-octorl::Policy modelParse(const Setting& model){
+octorl::Policy modelParse(const Setting& model, int s){
     vector<octorl::LayerInfo> layer_info;
     for(int i = 0; i < model.getLength(); i++) 
         layer_info.push_back(layerParse(model[i]));
 
-    return octorl::Policy(layer_info);
+    return octorl::Policy(layer_info,s);
 }
 

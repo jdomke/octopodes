@@ -14,7 +14,9 @@ octorl::LayerInfo::LayerInfo(octorl::layer_type t, octorl::activation_type a, st
     dilation = d;
 }
 
-octorl::Policy::Policy(std::vector<octorl::LayerInfo> l_i) {
+octorl::Policy::Policy(std::vector<octorl::LayerInfo> l_i,int s) {
+    seed = s;
+    torch::manual_seed(s);
     layer_info = l_i;
     for(auto &l : layer_info) {
         addLayer(l);

@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 #include <memory>
+#include <time.h>
 //#include "PolicyBase.hpp"
 
 // used to easily generate test networks, it is better to just define your own class
@@ -43,7 +44,7 @@ namespace octorl{
     class Policy : public torch::nn::Module  {
         
         public:
-            Policy(std::vector<LayerInfo> l_i);
+            Policy(std::vector<LayerInfo> l_i,int s = (int)time(NULL));
             Policy() {};
             torch::Tensor forward(torch::Tensor x);
             Policy& operator= (const Policy& p);
@@ -64,6 +65,7 @@ namespace octorl{
             torch::Tensor activation(torch::Tensor x, activation_type act);
             void addLayer(LayerInfo &l);
             int num_elem_param = 0; 
+            int seed;
             // need a vector for each layer type
 
     };

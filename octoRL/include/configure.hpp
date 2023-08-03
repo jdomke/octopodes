@@ -19,6 +19,6 @@ void a2cConfigureAndRun(const libconfig::Setting& root);
 void a3cConfigureAndRun(const libconfig::Setting& root);
 void dqnAsyncConfigureAndRun(const libconfig::Setting& root);
 octorl::LayerInfo layerParse(const libconfig::Setting& layer);
-octorl::Policy modelParse(const libconfig::Setting& model);
+octorl::Policy modelParse(const libconfig::Setting& model, int s);
 
 #endif

@@ -50,7 +50,7 @@ namespace octorl {
 
 
         private:
-            std::default_random_engine gen;
+            std::default_random_engine gen, sample_gen;
             std::uniform_real_distribution<float> distribution{std::uniform_real_distribution<float>(0,1)};
             std::shared_ptr<EnvironmentsBase> env;
             Policy critic;
@@ -76,7 +76,8 @@ namespace octorl {
             int rank;
             int num_ranks;
             int steps;
-            int update_count;
+	        int rand_seed;
+	        int update_count;
             void addToLocalMemory(torch::Tensor init_obs, int act, float reward, float R, int done);
 
 
