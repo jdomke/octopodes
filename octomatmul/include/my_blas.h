@@ -27,19 +27,19 @@ void blas_batch_gemm(const int parallel, const int batch_count, const int* batch
 
 template <typename T>
 void blas_batch_gemv(const int parallel, const int batch_count, const int* batch_size, const int* batch_head, const CBLAS_LAYOUT layout, const CBLAS_TRANSPOSE transA, const int* m, const int* n, const T* alpha, const T* const * a, const int* lda_v, const T* const * x, const int* incx, const T* beta, T** y, const int* incy){
-    int j = 0;
-      #pragma omp parallel for schedule(static, 1) private(j) if (parallel == 1) 
-      for (int i = 0; i < batch_count; i++){
-          for (j = 0; j < batch_size[i]; j++){
-            if constexpr(std::is_same_v<T, float>){
-                cblas_sgemv(layout,transA,m[i],n[i],alpha[i],a[batch_head[i]+j],lda_v[i],x[batch_head[i]+j],incx[i],beta[i],y[batch_head[i]+j],incy[i]);
-            }
-            else if constexpr(std::is_same_v<T, double>){
-                cblas_dgemv(layout,transA,m[i],n[i],alpha[i],a[batch_head[i]+j],lda_v[i],x[batch_head[i]+j],incx[i],beta[i],y[batch_head[i]+j],incy[i]);
-            }
-          }
-          
-      }
+    // int j = 0;
+    //   #pragma omp parallel for schedule(static, 1) private(j) if (parallel == 1) 
+    //   for (int i = 0; i < batch_count; i++){
+    //       for (j = 0; j < batch_size[i]; j++){
+    //         if constexpr(std::is_same_v<T, float>){
+    //             cblas_sgemv(layout,transA,m[i],n[i],alpha[i],a[batch_head[i]+j],lda_v[i],x[batch_head[i]+j],incx[i],beta[i],y[batch_head[i]+j],incy[i]);
+    //         }
+    //         else if constexpr(std::is_same_v<T, double>){
+    //             cblas_dgemv(layout,transA,m[i],n[i],alpha[i],a[batch_head[i]+j],lda_v[i],x[batch_head[i]+j],incx[i],beta[i],y[batch_head[i]+j],incy[i]);
+    //         }
+    //       }
+    //   }
+    performBLASGEMV(parallel, batch_count, batch_size, batch_head, layout, transA, m, n, alpha, a, lda_v, x, incx, beta, y, incy);
 }
 template <typename T>
 void CSRMVMultiply(const CSRMatrix<T>& matrix, const T* const* x, T** &result, const int total_batch_size, const int xlen, const int ylen, const int parallel_) {    //CSR matrix vector multiplication
@@ -51,17 +51,19 @@ void CSRMVMultiply(const CSRMatrix<T>& matrix, const T* const* x, T** &result, c
         int rowEnd = matrix.rowPtr[batch][i+1];
         for (int j = rowStart; j < rowEnd; j++){
           int rowInd = matrix.columns[batch][j];
+          // cout << rowInd << endl;
+          if (rowInd < ylen && rowInd >= 0){
           if constexpr(is_same_v<T, MKL_F16>){
             sum = f2h(h2f(sum) + h2f(matrix.values[batch][j]) * h2f(x[batch][rowInd]));
           }
           else{
             sum += matrix.values[batch][j] * x[batch][rowInd];
           }
+          }
         }
           result[batch][i] = sum;
       }
     }
-
 }
 template <typename T>
 void CSCMVMultiply(const CSCMatrix<T>& matrix, const T* const* x, T** &result, const int total_batch_size, const int xlen, const int ylen, const int parallel_) {
@@ -82,7 +84,7 @@ void CSCMVMultiply(const CSCMatrix<T>& matrix, const T* const* x, T** &result, c
     }
 }
 template <typename T>
-void ProcessVariablesandPerformBLAS(const int parallel_, int *&m, int* &n, int* &k, const CBLAS_TRANSPOSE transA, const CBLAS_TRANSPOSE transB, const CBLAS_LAYOUT layout, int* &lda, int* &ldb, int* &ldc, int* &lda_v, int* &incx, int* &incy, int incx_, int incy_, int m_, int k_, int n_, int*& batch_head, int& batch_count, int*& batch_size, const int total_batch_size, const T maxNum){    
+void ProcessVariablesandPerformBLAS(const int validate, const int parallel_, int *&m, int* &n, int* &k, const CBLAS_TRANSPOSE transA, const CBLAS_TRANSPOSE transB, const CBLAS_LAYOUT layout, int* &lda, int* &ldb, int* &ldc, int* &lda_v, int* &incx, int* &incy, int incx_, int incy_, int m_, int k_, int n_, int*& batch_head, int& batch_count, int*& batch_size, const int total_batch_size, const T maxNum){    
     size_t a_size, b_size, c_size, x_size, y_size, align=256;
     T* alpha = static_cast<T*>(aligned_alloc(align, sizeof(T)*batch_count));
     T* beta = static_cast<T*>(aligned_alloc(align, sizeof(T)*batch_count));
@@ -186,6 +188,21 @@ void ProcessVariablesandPerformBLAS(const int parallel_, int *&m, int* &n, int* 
       cout << "time for one run of GEMM operation: " << t1 - t0;
       obtainGflopsEFF<T>(t1-t0, total_batch_size, batch_size[0], m_, n_, k_);
     }
+    if constexpr(is_same_v<T, MKL_F16> == false){
+      if (validate == 1){
+        if (m_ == n_ && k_ == n_){
+          if (ValidateBLASMatrix<T>(parallel_, layout, transA, transB, a, b, c, m, n, k, m_, n_, k_, batch_count, batch_size, batch_head, total_batch_size, maxNum, alpha, beta, lda_v, incx, incy) == true){
+            cout << "correct result\n\n";
+          }
+          else{
+            cout << "incorrect result\n\n";
+          }
+        }
+        else{
+          cout << "Unable to validate, the dimensions of the matrix must equal\n"; 
+        }
+      }
+    }
     for (int i = 0; i < batch_count; i++){
       for (int j = 0; j < batch_size[i]; j++){
           free(a[batch_head[i]+j]);
@@ -286,7 +303,7 @@ void sparse_blas_CSC_mygemm_gemv(const int total_batch_size, const int parallel_
 }
 
 template <typename T>
-void ProcessandPerformSparseBLASOperations(const int type, const int total_batch_size, const int batch_size, const int m_, const int n_, const int k_,  const int transA_, const int layout_, const int maxNum, const int parallel_){
+void ProcessandPerformSparseBLASOperations(const int validate, const int type, const int total_batch_size, const int batch_size, const int m_, const int n_, const int k_,  const int transA_, const int layout_, const int maxNum, const int parallel_){
   //type 0 = CSR, type 1 = CSC
     int aRow = m_, aCol = k_;
     sparse_operation_t opr;
@@ -347,9 +364,9 @@ void ProcessandPerformSparseBLASOperations(const int type, const int total_batch
       ProcessCSRMatrix(m1, total_batch_size, m_, k_, maxNum);
       CSRMatrix<T> m2(total_batch_size);
       ProcessCSRMatrix(m2, total_batch_size, bRow, bCol, maxNum);
-      // PrintCSRMatrix(m1, m_, k_);
-      // PrintCSRMatrix(m2, bRow, bCol);
       CSRMatrix<T> m3(total_batch_size);
+      delete [] m3.rowPtr;
+      m3.rowPtr = new int*[total_batch_size+1];
       for (int i = 0; i < total_batch_size; i++){     //create csr handle (no half or quadruple precision supported from MKL)
         if constexpr(is_same_v<T, float>){
           mkl_sparse_s_create_csr(&a[i], SPARSE_INDEX_BASE_ZERO, aRow, aCol, m1.rowPtr[i], m1.rowPtr[i]+1, m1.columns[i], m1.values[i]);
@@ -362,12 +379,72 @@ void ProcessandPerformSparseBLASOperations(const int type, const int total_batch
       }
       if constexpr(is_same_v<T, float> || is_same_v<T, double>){
         sparse_blas_gemm_gemv<T>(type, opr, descrA, layout_b, parallel_, total_batch_size, cCol, ldb, ldc, a, b, c, bSparse, resMatrix, x, y, batch_size, m_, n_, k_);
-      }
+        sparse_index_base_t index = SPARSE_INDEX_BASE_ZERO;
+        if (validate == 1){
+          if (m_ == n_ && k_ == n_){
+            for (int i = 0; i < total_batch_size; i++) {
+              MKL_INT rows, cols;
+              if constexpr(is_same_v<T, float>){
+                mkl_sparse_s_export_csr(resMatrix[i], &index, &rows, &cols, &m3.rowPtr[i], &m3.rowPtr[i]+1, &m3.columns[i], &m3.values[i]);
+              }
+              else if constexpr(is_same_v<T, double>){
+                mkl_sparse_d_export_csr(resMatrix[i], &index, &rows, &cols, &m3.rowPtr[i], &m3.rowPtr[i]+1, &m3.columns[i], &m3.values[i]);
+              }
+              m3.nonZeros[i] = m3.rowPtr[i][rows];
+              m3.nonZeroCount[i] = m3.nonZeros[i];
+            }
+            if (opr == SPARSE_OPERATION_TRANSPOSE){   
+              CSRMatrix<T> transM1(total_batch_size);     //create a matrix to store the transposed M1
+              transposeCSRMatrix(m1, transM1, aRow, aCol, total_batch_size);
+              if (ValidateMyCSRCSCMatrix<CSRMatrix, T>(transM1, m2, m3, m_, n_, k_, total_batch_size, parallel_) == true){
+                cout << "correct result\n\n";
+              }
+              else{
+                cout << "incorrect result\n\n";
+              }
+            for (int j = 0; j < total_batch_size; j++){       //deallocate the transposed matrix
+              delete [] transM1.values[j];
+              delete [] transM1.columns[j];
+              delete [] transM1.rowPtr[j];
+            }
+            delete [] transM1.values;
+            delete [] transM1.columns;
+            delete [] transM1.rowPtr;
+            delete [] transM1.nonZeroCount;
+            delete [] transM1.nonZeros;
+          }
+          else{
+              if (ValidateMyCSRCSCMatrix<CSRMatrix, T>(m1, m2, m3, m_, n_, k_, total_batch_size, parallel_) == true){
+                cout << "correct result\n\n";
+              }
+              else{
+                cout << "incorrect result\n\n";
+              }
+            }
+          }
+          else{
+              cout << "Unable to validate, the dimensions of the matrix must equal\n"; 
+          }
+        }
+    }
       else if constexpr(is_same_v<T, boost::multiprecision::float128> || is_same_v<T, MKL_F16>){
         if (opr == SPARSE_OPERATION_TRANSPOSE){   
           CSRMatrix<T> transM1(total_batch_size);     //create a matrix to store the transposed M1
           transposeCSRMatrix(m1, transM1, aRow, aCol, total_batch_size);
           sparse_blas_CSR_mygemm_gemv<T>(total_batch_size, parallel_, transM1, m2, m3, aCol, aRow, bRow, bCol, x, y, xlen, ylen, batch_size, m_, n_, k_);
+          if (validate == 1){
+            if (m_ == n_ && k_ == n_){
+              if (ValidateMyCSRCSCMatrix<CSRMatrix, T>(transM1, m2, m3, m_, n_, k_, total_batch_size, parallel_) == true){
+                cout << "correct result\n\n";
+              }
+              else{
+                cout << "incorrect result\n\n";
+              }
+            }
+            else{
+              cout << "Unable to validate, the dimensions of the matrix must equal\n"; 
+            }
+          }
           for (int j = 0; j < total_batch_size; j++){       //deallocate the transposed matrix
             delete [] transM1.values[j];
             delete [] transM1.columns[j];
@@ -381,8 +458,22 @@ void ProcessandPerformSparseBLASOperations(const int type, const int total_batch
         }
         else{
           sparse_blas_CSR_mygemm_gemv<T>(total_batch_size, parallel_, m1, m2, m3, aRow, aCol, bRow, bCol, x, y, xlen, ylen, batch_size, m_, n_, k_);
+          if (validate == 1){
+            if (m_ == n_ && k_ == n_){
+              if (ValidateMyCSRCSCMatrix<CSRMatrix, T>(m1, m2, m3, m_, n_, k_, total_batch_size, parallel_) == true){
+                cout << "correct result\n\n";
+              }
+              else{
+                cout << "incorrect result\n\n";
+              }
+            }
+            else{
+              cout << "Unable to validate, the dimensions of the matrix must equal\n"; 
+            }
+          }
         }
       }
+
       if constexpr(is_same_v<T, boost::multiprecision::float128> || is_same_v<T, MKL_F16>){
         for (int j = 0; j < total_batch_size; j++){
           delete [] m3.values[j];
@@ -420,6 +511,8 @@ void ProcessandPerformSparseBLASOperations(const int type, const int total_batch
       CSCMatrix<T> m2(total_batch_size);
       ProcessCSCMatrix(m2, total_batch_size, bRow, bCol, maxNum);
       CSCMatrix<T> m3(total_batch_size);
+      delete [] m3.colPtr;
+      m3.colPtr = new int*[total_batch_size+1];   //allocate one extra space for rowEnd
       for (int i = 0; i < total_batch_size; i++){     //create csr handle (no half or quadruple precision supported from MKL)
         if constexpr(is_same_v<T, float>){
           mkl_sparse_s_create_csc(&a[i], SPARSE_INDEX_BASE_ZERO, aRow, aCol, m1.colPtr[i], m1.colPtr[i]+1, m1.rows[i], m1.values[i]);
@@ -432,6 +525,53 @@ void ProcessandPerformSparseBLASOperations(const int type, const int total_batch
       }
       if constexpr(is_same_v<T, float> || is_same_v<T, double>){
         sparse_blas_gemm_gemv<T>(type, opr, descrA, layout_b, parallel_, total_batch_size, cCol, ldb, ldc, a, b, c, bSparse, resMatrix, x, y, batch_size, m_, n_, k_);
+        sparse_index_base_t index = SPARSE_INDEX_BASE_ZERO;
+        if (validate == 1){
+          if (m_ == n_ && k_ == n_){
+            for (int i = 0; i < total_batch_size; i++) {
+              MKL_INT rows, cols;
+              if constexpr(is_same_v<T, float>){
+                mkl_sparse_s_export_csc(resMatrix[i], &index, &rows, &cols, &m3.colPtr[i], &m3.colPtr[i]+1, &m3.rows[i], &m3.values[i]);
+              }
+              else if constexpr(is_same_v<T, double>){
+                mkl_sparse_d_export_csc(resMatrix[i], &index, &rows, &cols, &m3.colPtr[i], &m3.colPtr[i]+1, &m3.rows[i], &m3.values[i]);
+              }
+              m3.nonZeros[i] = m3.colPtr[i][cols];
+              m3.nonZeroCount[i] = m3.nonZeros[i];
+            }
+            if (opr == SPARSE_OPERATION_TRANSPOSE){   
+              CSCMatrix<T> transM1(total_batch_size);     //create a matrix to store the transposed M1
+              transposeCSCMatrix(m1, transM1, aRow, aCol, total_batch_size);
+              if (ValidateMyCSRCSCMatrix<CSCMatrix, T>(transM1, m2, m3, m_, n_, k_, total_batch_size, parallel_) == true){
+                cout << "correct result\n\n";
+              }
+              else{
+                cout << "incorrect result\n\n";
+              }
+            for (int j = 0; j < total_batch_size; j++){       //deallocate the transposed matrix
+              delete [] transM1.values[j];
+              delete [] transM1.rows[j];
+              delete [] transM1.colPtr[j];
+            }
+            delete [] transM1.values;
+            delete [] transM1.rows;
+            delete [] transM1.colPtr;
+            delete [] transM1.nonZeroCount;
+            delete [] transM1.nonZeros;
+          }
+          else{
+              if (ValidateMyCSRCSCMatrix<CSCMatrix, T>(m1, m2, m3, m_, n_, k_, total_batch_size, parallel_) == true){
+                cout << "correct result\n\n";
+              }
+              else{
+                cout << "incorrect result\n\n";
+              }
+            }
+          }
+          else{
+              cout << "Unable to validate, the dimensions of the matrix must equal\n"; 
+          }
+        }
       } 
       else if constexpr(is_same_v<T, boost::multiprecision::float128> || is_same_v<T, MKL_F16>){
         if (opr == SPARSE_OPERATION_TRANSPOSE){
@@ -440,6 +580,19 @@ void ProcessandPerformSparseBLASOperations(const int type, const int total_batch
           // PrintCSCMatrix(m1, aRow, aCol);
           // PrintCSCMatrix(transM1, aCol, aRow);
           sparse_blas_CSC_mygemm_gemv<T>(total_batch_size, parallel_, transM1, m2, m3, aCol, aRow, bRow, bCol, x, y, xlen, ylen, batch_size, m_, n_, k_);
+          if (validate == 1){
+            if (m_ == n_ && k_ == n_){
+              if (ValidateMyCSRCSCMatrix<CSCMatrix, T>(transM1, m2, m3, m_, n_, k_, total_batch_size, parallel_) == true){
+                cout << "correct result\n\n";
+              }
+              else{
+                cout << "incorrect result\n\n";
+              }
+            }
+            else{
+              cout << "Unable to validate, the dimensions of the matrix must equal\n"; 
+            }
+          }
           for (int j = 0; j < total_batch_size; j++){       //deallocate the transposed matrix
             delete [] transM1.values[j];
             delete [] transM1.rows[j];
@@ -453,6 +606,19 @@ void ProcessandPerformSparseBLASOperations(const int type, const int total_batch
         }
         else{
           sparse_blas_CSC_mygemm_gemv<T>(total_batch_size, parallel_, m1, m2, m3, aRow, aCol, bRow, bCol, x, y, xlen, ylen, batch_size, m_, n_, k_);
+          if (validate == 1){
+            if (m_ == n_ && k_ == n_){
+              if (ValidateMyCSRCSCMatrix<CSCMatrix, T>(m1, m2, m3, m_, n_, k_, total_batch_size, parallel_) == true){
+                cout << "correct result\n\n";
+              }
+              else{
+                cout << "incorrect result\n\n";
+              }
+            }
+            else{
+              cout << "Unable to validate, the dimensions of the matrix must equal\n"; 
+            }
+          }
         }
       }
       if constexpr(is_same_v<T, boost::multiprecision::float128> || is_same_v<T, MKL_F16>){

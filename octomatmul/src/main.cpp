@@ -28,8 +28,8 @@ typedef boost::multiprecision::float128 float128;
 const int maxNum = 16;
 
 int main(int argc, char* argv[]) {
-  int type, m_, n_, k_, batch_count, batch_size_, layout_ = 0, transA_ = 0, transB_ = 0, parallel_ = 0, incx_ = 1, incy_ = 1;
-  int paramCount = 12;
+  int type, m_, n_, k_, batch_count, batch_size_, layout_ = 0, transA_ = 0, transB_ = 0, parallel_ = 0, incx_ = 1, incy_ = 1, validate = 0;
+  int paramCount = 13;
   int totalParam = 0;
   FILE *fp;
   ini_entry_t entry[paramCount];
@@ -60,8 +60,8 @@ int main(int argc, char* argv[]) {
   if (totalParam > 9) transB_ = atoi(entry[8].value); 
   if (totalParam > 10) parallel_ = atoi(entry[9].value);
   if (totalParam > 11) incx_ = atoi(entry[10].value);
-  if (totalParam >= 12) incy_ = atoi(entry[11].value);
-
+  if (totalParam > 12) incy_ = atoi(entry[11].value);
+  if (totalParam >= 13) validate = atoi(entry[12].value);
   for (int i = 0; i < totalParam; i++){
     free(entry[i].section);
     free(entry[i].key);
@@ -73,7 +73,7 @@ int main(int argc, char* argv[]) {
   if (batch_size_ < 1){
     batch_size_ = 1;
   }
-  cout << "type: " << type << "\nbatch_count: " << batch_count << "\nbatch_size: " << batch_size_ << "\nm: " << m_ << "\nn: " << n_ << "\nk: " << k_ << "\nlayout: "<< layout_ << "\ntransA: " << transA_ << "\ntransB: " << transB_ << "\nparallel: " << parallel_ <<  "\nincx_: " << incx_ << "\nincy_: " << incy_ << endl;
+  cout << "type: " << type << "\nbatch_count: " << batch_count << "\nbatch_size: " << batch_size_ << "\nm: " << m_ << "\nn: " << n_ << "\nk: " << k_ << "\nlayout: "<< layout_ << "\ntransA: " << transA_ << "\ntransB: " << transB_ << "\nparallel: " << parallel_ <<  "\nincx_: " << incx_ << "\nincy_: " << incy_  << "\nvalidation:" << validate << endl;
   
   //this code segment with initializations and its functions were inspired from https://github.com/wudu98/fugaku_batch_gemm
   size_t align = 256;
@@ -104,31 +104,31 @@ int main(int argc, char* argv[]) {
     batch_head[i] = batch_size[i-1] + batch_head[i-1];    //calculate the batch head for each batch by using the size and head of previous batch 
   }
   if (type == 0){ //half precision operations
-    ProcessVariablesandPerformBLAS<MKL_F16>(parallel_, m, n, k, transA, transB, layout, lda, ldb, ldc, lda_v, incx, incy, incx_, incy_, m_, k_, n_, batch_head, batch_count, batch_size, total_batch_size, maxNum);
-    performDenseMatrixOperations<MKL_F16>(m_, n_, k_, batch_size_, total_batch_size, parallel_, maxNum);
-    performSparseMatrixOperations<MKL_F16>(m_, n_, k_, batch_size_, total_batch_size, parallel_, maxNum);
-    ProcessandPerformSparseBLASOperations<MKL_F16>(0, total_batch_size, batch_size_, m_, n_, k_, transA_, layout_, maxNum, parallel_);
-    ProcessandPerformSparseBLASOperations<MKL_F16>(1, total_batch_size, batch_size_, m_, n_, k_, transA_, layout_, maxNum, parallel_);  
+    ProcessVariablesandPerformBLAS<MKL_F16>(validate, parallel_, m, n, k, transA, transB, layout, lda, ldb, ldc, lda_v, incx, incy, incx_, incy_, m_, k_, n_, batch_head, batch_count, batch_size, total_batch_size, maxNum);
+    performDenseMatrixOperations<MKL_F16>(validate, m_, n_, k_, batch_size_, total_batch_size, parallel_, maxNum);
+    performSparseMatrixOperations<MKL_F16>(validate, m_, n_, k_, batch_size_, total_batch_size, parallel_, maxNum);
+    ProcessandPerformSparseBLASOperations<MKL_F16>(validate, 0, total_batch_size, batch_size_, m_, n_, k_, transA_, layout_, maxNum, parallel_);
+    ProcessandPerformSparseBLASOperations<MKL_F16>(validate, 1, total_batch_size, batch_size_, m_, n_, k_, transA_, layout_, maxNum, parallel_);  
   }
   else if (type == 1){  //single precision operations
-    ProcessVariablesandPerformBLAS<float>(parallel_, m, n, k, transA, transB, layout, lda, ldb, ldc, lda_v, incx, incy, incx_, incy_, m_, k_, n_, batch_head, batch_count, batch_size, total_batch_size, maxNum);
-    performDenseMatrixOperations<float>(m_, n_, k_, batch_size_, total_batch_size, parallel_, maxNum);
-    performSparseMatrixOperations<float>(m_, n_, k_, batch_size_,  total_batch_size, parallel_, maxNum);
-    ProcessandPerformSparseBLASOperations<float>(0, total_batch_size, batch_size_, m_, n_, k_, transA_, layout_, maxNum, parallel_);
-    ProcessandPerformSparseBLASOperations<float>(1, total_batch_size, batch_size_, m_, n_, k_, transA_, layout_, maxNum, parallel_);
+    ProcessVariablesandPerformBLAS<float>(validate, parallel_, m, n, k, transA, transB, layout, lda, ldb, ldc, lda_v, incx, incy, incx_, incy_, m_, k_, n_, batch_head, batch_count, batch_size, total_batch_size, maxNum);
+    performDenseMatrixOperations<float>(validate, m_, n_, k_, batch_size_, total_batch_size, parallel_, maxNum);
+    performSparseMatrixOperations<float>(validate, m_, n_, k_, batch_size_,  total_batch_size, parallel_, maxNum);
+    ProcessandPerformSparseBLASOperations<float>(validate, 0, total_batch_size, batch_size_, m_, n_, k_, transA_, layout_, maxNum, parallel_);
+    ProcessandPerformSparseBLASOperations<float>(validate, 1, total_batch_size, batch_size_, m_, n_, k_, transA_, layout_, maxNum, parallel_);
   }
   else if (type == 2){  //double precision operations
-    ProcessVariablesandPerformBLAS<double>(parallel_, m, n, k, transA, transB, layout, lda, ldb, ldc, lda_v, incx, incy, incx_, incy_, m_, k_, n_, batch_head, batch_count, batch_size, total_batch_size, maxNum);
-    performDenseMatrixOperations<double>(m_, n_, k_, batch_size_, total_batch_size, parallel_, maxNum);
-    performSparseMatrixOperations<double>(m_, n_, k_, batch_size_, total_batch_size, parallel_, maxNum);
-    ProcessandPerformSparseBLASOperations<double>(0, total_batch_size, batch_size_, m_, n_, k_, transA_, layout_, maxNum, parallel_);
-    ProcessandPerformSparseBLASOperations<double>(1, total_batch_size, batch_size_, m_, n_, k_, transA_, layout_, maxNum, parallel_);
+    ProcessVariablesandPerformBLAS<double>(validate, parallel_, m, n, k, transA, transB, layout, lda, ldb, ldc, lda_v, incx, incy, incx_, incy_, m_, k_, n_, batch_head, batch_count, batch_size, total_batch_size, maxNum);
+    performDenseMatrixOperations<double>(validate, m_, n_, k_, batch_size_, total_batch_size, parallel_, maxNum);
+    performSparseMatrixOperations<double>(validate, m_, n_, k_, batch_size_, total_batch_size, parallel_, maxNum);
+    ProcessandPerformSparseBLASOperations<double>(validate, 0, total_batch_size, batch_size_, m_, n_, k_, transA_, layout_, maxNum, parallel_);
+    ProcessandPerformSparseBLASOperations<double>(validate, 1, total_batch_size, batch_size_, m_, n_, k_, transA_, layout_, maxNum, parallel_);
   }
   else if (type == 3){  //quad precision operations
-    performDenseMatrixOperations<float128>(m_, n_, k_, batch_size_, total_batch_size, parallel_, maxNum);
-    performSparseMatrixOperations<float128>(m_, n_, k_, batch_size_, total_batch_size, parallel_, maxNum);
-    ProcessandPerformSparseBLASOperations<float128>(0, total_batch_size, batch_size_, m_, n_, k_, transA_, layout_, maxNum, parallel_);
-    ProcessandPerformSparseBLASOperations<float128>(1, total_batch_size, batch_size_, m_, n_, k_, transA_, layout_, maxNum, parallel_);
+    performDenseMatrixOperations<float128>(validate, m_, n_, k_, batch_size_, total_batch_size, parallel_, maxNum);
+    performSparseMatrixOperations<float128>(validate, m_, n_, k_, batch_size_, total_batch_size, parallel_, maxNum);
+    ProcessandPerformSparseBLASOperations<float128>(validate, 0, total_batch_size, batch_size_, m_, n_, k_, transA_, layout_, maxNum, parallel_);
+    ProcessandPerformSparseBLASOperations<float128>(validate, 1, total_batch_size, batch_size_, m_, n_, k_, transA_, layout_, maxNum, parallel_);
   }
     free(batch_size);
     free(batch_head);

@@ -1,5 +1,5 @@
 template <typename T>
-void performDenseMatrixOperations(const int m_, const int n_, const int k_, const int batch_size, const int total_batch_size, const int parallel_, const int maxNum){
+void performDenseMatrixOperations(const int validate, const int m_, const int n_, const int k_, const int batch_size, const int total_batch_size, const int parallel_, const int maxNum){
     DenseMatrix <T> ** a = new DenseMatrix<T>*[total_batch_size]; 
     DenseMatrix <T> ** b = new DenseMatrix<T>*[total_batch_size];
     DenseMatrix <T> ** c = new DenseMatrix<T>*[total_batch_size];
@@ -49,6 +49,19 @@ void performDenseMatrixOperations(const int m_, const int n_, const int k_, cons
     t1 = omp_get_wtime();
     cout << "Time for one matrix vector multiplication operation with Dense Matrix: " << t1 - t0 << " ";
     obtainGflopsEFF<T>(t1-t0, total_batch_size, batch_size, m_, n_, k_);
+    if (validate == 1){
+      if (m_ == n_ && k_ == n_){
+        if (ValidateDenseSparseMatrix<DenseMatrix, T>(a, b, c, m_, n_, k_, total_batch_size) == true){
+          cout << "correct result\n\n";
+        }
+        else{
+          cout << "incorrect result\n\n";
+        }
+      }
+      else{
+        cout << "Unable to validate, the dimensions of the matrix must equal\n"; 
+      }
+    }
     for (int i = 0; i < total_batch_size; i++) {
       delete a[i];
       delete b[i];
@@ -60,7 +73,7 @@ void performDenseMatrixOperations(const int m_, const int n_, const int k_, cons
 }
 
 template <typename T>
-void performSparseMatrixOperations(const int m_, const int n_, const int k_, const int batch_size, const int total_batch_size, const int parallel_, const int maxNum){
+void performSparseMatrixOperations(const int validate, const int m_, const int n_, const int k_, const int batch_size, const int total_batch_size, const int parallel_, const int maxNum){
     SparseMatrix <T> ** a = new SparseMatrix<T>*[total_batch_size]; 
     SparseMatrix <T> ** b = new SparseMatrix<T>*[total_batch_size];
     SparseMatrix <T> ** c = new SparseMatrix<T>*[total_batch_size];
@@ -94,6 +107,19 @@ void performSparseMatrixOperations(const int m_, const int n_, const int k_, con
     t1 = omp_get_wtime();
     cout << "Time for one matrix vector multiplication operation with Sparse Matrix: " << t1 - t0 << " ";
     obtainGflopsEFF<T>(t1-t0, total_batch_size, batch_size, m_, n_, k_);
+    if (validate == 1){
+      if (m_ == n_ && k_ == n_){
+        if (ValidateDenseSparseMatrix<SparseMatrix, T>(a, b, c, m_, n_, k_, total_batch_size) == true){
+          cout << "correct result\n\n";
+        }
+        else{
+          cout << "incorrect result\n\n";
+        }
+      }
+      else{
+        cout << "Unable to validate, the dimensions of the matrix must equal\n"; 
+      }
+    }
     for (int i = 0; i < total_batch_size; i++) {
       delete a[i];
       delete b[i];
@@ -103,65 +129,91 @@ void performSparseMatrixOperations(const int m_, const int n_, const int k_, con
     delete[] b;
     delete[] c;
 }
+
 template <typename T>
 void multiplyCSRSparseMatrices(const CSRMatrix<T>& A, const CSRMatrix<T>& B, CSRMatrix<T>& result, const int aRow, const int aCol, const int bRow, const int bCol, const int total_batch_size, const int parallel_) {
     int A_rows = aRow;
     int B_cols = bCol;
-    for (int batch = 0; batch < total_batch_size; batch++){
-      result.values[batch] = new T[aRow*bCol];
-      result.columns[batch] = new int[aRow*bCol];
-      result.rowPtr[batch] = new int[A_rows + 1];
-      result.nonZeros[batch] = 0;
-      result.nonZeroCount[batch] = A_rows * B_cols; // Maximum possible non-zero elements in the result
-      // Initialize the row pointer to zero
-      result.rowPtr[batch][0] = 0;
-      for (int i = 1; i < A_rows; ++i) {
-        result.rowPtr[batch][i] = A_rows * B_cols;  // initialize rowPtr as the max value
-      }
+
+    for (int batch = 0; batch < total_batch_size; batch++) {
+        result.values[batch] = new T[aRow * bCol];
+        result.columns[batch] = new int[aRow * bCol];
+        result.rowPtr[batch] = new int[A_rows + 1];
+        result.nonZeros[batch] = 0;
+        result.nonZeroCount[batch] = A_rows * B_cols; // initialize non zero count to the maximum possible number
+        // Initialize the row pointer to zero
+        result.rowPtr[batch][0] = 0;
+
+        int* rowNonZeroCounts = new int[A_rows]();
+
+        for (int i = 0; i < A_rows; ++i) {
+            int rowStart = result.rowPtr[batch][i];
+            for (int k = A.rowPtr[batch][i]; k < A.rowPtr[batch][i + 1]; ++k) {
+                int A_col = A.columns[batch][k];
+                for (int l = B.rowPtr[batch][A_col]; l < B.rowPtr[batch][A_col + 1]; ++l) {
+                    int j = B.columns[batch][l];
+                    rowNonZeroCounts[i]++; 
+                    result.values[batch][rowStart + rowNonZeroCounts[i]] = A.values[batch][k] * B.values[batch][l];
+                    result.columns[batch][rowStart + rowNonZeroCounts[i]] = j;
+                }
+            }
+            result.rowPtr[batch][i + 1] = rowStart + rowNonZeroCounts[i];
+        }
+
+        // Mark empty rows with rowPtr set to -1 for easy identification for later
+        for (int i = 0; i < A_rows; ++i) {
+            if (rowNonZeroCounts[i] == 0) {
+                result.rowPtr[batch][i] = -1;
+            }
+        }
+
+        delete[] rowNonZeroCounts;
     }
+
+    // Fix rowPtr values for empty rows
+    for (int batch = 0; batch < total_batch_size; batch++) {
+        int prevRowPtr = 0;
+        for (int i = 0; i < A_rows; ++i) {
+            if (result.rowPtr[batch][i] == -1) {    
+                result.rowPtr[batch][i] = prevRowPtr;
+            } else {
+                prevRowPtr = result.rowPtr[batch][i];
+            }
+        }
+    }
+
     #pragma omp parallel for schedule(static) if (parallel_ == 1)
     for (int batch = 0; batch < total_batch_size; batch++) {
-        int B_nonZeros = B.nonZeroCount[batch];
-        //matrix multiplication 
-        int count = 0;      //number of elements
-        int lastUp = 0;     //position of the last update to the row index
-        #pragma omp parallel for collapse(2)
-        for (int i = 0; i < A_rows; ++i) {        
-            for (int j = 0; j < B_cols; ++j) {
-                T sum = 0;
-                for (int k = A.rowPtr[batch][i]; k < A.rowPtr[batch][i + 1]; ++k) {
-                    int A_col = A.columns[batch][k];
-                    for (int l = B.rowPtr[batch][A_col]; l < B.rowPtr[batch][A_col + 1]; ++l) {
-                        if (B.columns[batch][l] == j) {
-                            if constexpr(is_same_v<T, MKL_F16>){
-                              sum =  f2h(h2f(sum) + h2f(A.values[batch][k]) * h2f(B.values[batch][l]));
-                            }
-                            else  
-                            {
-                              sum += A.values[batch][k] * B.values[batch][l];
-                            }
-                            break;
+    int B_nonZeros = B.nonZeroCount[batch];
+    int lastUp = 0; // position of the last update to the row index
+    for (int i = 0; i < A_rows; ++i) {
+        int count = result.rowPtr[batch][i]; // private count variable for each thread
+        for (int j = 0; j < B_cols; ++j) {
+            T sum = 0;
+            for (int k = A.rowPtr[batch][i]; k < A.rowPtr[batch][i + 1]; ++k) {
+                int A_col = A.columns[batch][k];
+                for (int l = B.rowPtr[batch][A_col]; l < B.rowPtr[batch][A_col + 1]; ++l) {
+                    if (B.columns[batch][l] == j) {
+                        if constexpr (is_same_v<T, MKL_F16>) {
+                            sum = f2h(h2f(sum) + h2f(A.values[batch][k]) * h2f(B.values[batch][l]));
+                        } else {
+                            sum += A.values[batch][k] * B.values[batch][l];
                         }
+                        break;
                     }
                 }
-                if (sum != 0) {
-                  #pragma omp critical
-                  {
-                    if (i != lastUp) {  // check if a new row has started by comparing I to the last row index update
-                        result.rowPtr[batch][i] = count;
-                        lastUp = i;       // change position of last index update
-                    }
-                    result.values[batch][count] = sum;    // Append result if sum isn't zero
-                    result.columns[batch][count] = j;
-                    result.nonZeros[batch]++;
-                    count++;
-                  }
-                }
-          }
+            }
+            if (sum != 0) {
+                result.values[batch][count] = sum; // append the result value if the sum isnt zero
+                result.columns[batch][count] = j;
+                count++;
+            }
         }
-        result.rowPtr[batch][lastUp+1] = count;         //set last element as number of non zeros
-        // Resize array to fit the number of non zero elements
-        result.nonZeroCount[batch] = result.nonZeros[batch];
+        result.rowPtr[batch][i + 1] = count; // set last element as the number of non zeros
+        result.nonZeros[batch] = count; // update non zeros count for this row
+    }
+
+        // resize array to fit the number of non-zero elements
         T* temp_values = new T[result.nonZeros[batch]];
         int* temp_columns = new int[result.nonZeros[batch]];
 
@@ -175,7 +227,8 @@ void multiplyCSRSparseMatrices(const CSRMatrix<T>& A, const CSRMatrix<T>& B, CSR
 
         result.values[batch] = temp_values;
         result.columns[batch] = temp_columns;
-    }      
+    }
+  
 }
 template <typename T>
 void multiplyCSCSparseMatrices(const CSCMatrix<T>& A, const CSCMatrix<T>& B, CSCMatrix<T>& result, const int aRow, const int aCol, const int bRow, const int bCol, const int total_batch_size, const int parallel_) {
@@ -189,20 +242,9 @@ void multiplyCSCSparseMatrices(const CSCMatrix<T>& A, const CSCMatrix<T>& B, CSC
     }
     #pragma omp parallel for schedule(static) if (parallel_ == 1)
     for (int batch = 0; batch < total_batch_size; batch++) {
-        // int A_rows = aRow;
-        // int B_cols = bCol;
         int A_nonZeros = A.nonZeros[batch];
         int B_nonZeros = B.nonZeros[batch];
-        // Allocate memory for the output matrix
-        // result.values[batch] = new T[A_rows * B_cols];
-        // result.rows[batch] = new int[A_rows * B_cols];
-        // result.colPtr[batch] = new int[B_cols + 1];
-
-        // Perform matrix multiplication
-        // result.colPtr[batch][0] = 0;
         int count = 0;
-
-        #pragma omp parallel for
         for (int j = 0; j < B_cols; ++j){
             for (int k = 0; k < A_rows; ++k) {
                 T sum = 0;

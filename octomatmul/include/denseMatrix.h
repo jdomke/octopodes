@@ -376,28 +376,30 @@ DenseMatrix<T> DenseMatrix<T> :: operator/(const T& rhs){
     }
     return resMatrix;
 }
+
 template <typename T>
-vector<T> DenseMatrix<T> :: operator*(const vector<T>& rhs){
-    vector<T> resVector(rows_, 0);          //standard vector multiplication with matrix algorithm
-    if (rhs.size() == cols_){
-        #pragma omp parallel for collapse(2) if (parallel_ == 1)
-        for (int i = 0; i < rows_; i++){
-            for (int j = 0; j < cols_; j++){
-                if constexpr(is_same_v<T,MKL_F16>){
-                    resVector[i] = f2h(h2f(resVector[i]) + h2f(matrix_[i][j]) * h2f(rhs[j]));
-                }
-                else{
-                    resVector[i] += matrix_[i][j]* rhs[j];
+vector<T> DenseMatrix<T>::operator*(const vector<T>& rhs) {
+    vector<T> resVector(rows_, 0);
+
+    if (rhs.size() == cols_) {
+        #pragma omp parallel for if (parallel_ == 1)
+        for (int i = 0; i < rows_; i++) {
+            T localResult = 0; // Use a local variable to store the result to prevent incorrect result from parallelization
+            for (int j = 0; j < cols_; j++) {
+                if constexpr (is_same_v<T, MKL_F16>) {
+                    localResult = f2h(h2f(localResult) + h2f(matrix_[i][j]) * h2f(rhs[j]));
+                } else {
+                    localResult += matrix_[i][j] * rhs[j];
                 }
             }
+            resVector[i] = localResult; // Update the result vector after the inner loop
         }
-    }   
-    else{
-        cout << "operation failed due to unmatched size\n";
+    } else {
+        cout << "Operation failed due to unmatched size\n";
     }
+
     return resVector;
 }
-
 template <typename T>
 void DenseMatrix<T> :: insert(int row, int col, T val){
     if (row < rows_ && col < cols_){

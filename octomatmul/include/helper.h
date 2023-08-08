@@ -98,7 +98,22 @@ double fp_peak(){
     double gFlops = 2.0 * ncore * flop;
     return gFlops;
 }
-
+template <typename T>
+void performBLASGEMV(const int parallel, const int batch_count, const int* batch_size, const int* batch_head, const CBLAS_LAYOUT layout, const CBLAS_TRANSPOSE transA, const int* m, const int* n, const T* alpha, const T* const * a, const int* lda_v, const T* const * x, const int* incx, const T* beta, T** y, const int* incy){
+    int j = 0;
+      #pragma omp parallel for schedule(static, 1) private(j) if (parallel == 1) 
+      for (int i = 0; i < batch_count; i++){
+          for (j = 0; j < batch_size[i]; j++){
+            if constexpr(std::is_same_v<T, float>){
+                cblas_sgemv(layout,transA,m[i],n[i],alpha[i],a[batch_head[i]+j],lda_v[i],x[batch_head[i]+j],incx[i],beta[i],y[batch_head[i]+j],incy[i]);
+            }
+            else if constexpr(std::is_same_v<T, double>){
+                cblas_dgemv(layout,transA,m[i],n[i],alpha[i],a[batch_head[i]+j],lda_v[i],x[batch_head[i]+j],incx[i],beta[i],y[batch_head[i]+j],incy[i]);
+            }
+          }
+          
+      }
+}
 template <typename T>
 void obtainGflopsEFF(double time, int total_batch_size, int batch_size, int m, int n, int k){ // code taken from https://github.com/wudu98/fugaku_batch_gemm/blob/master/benchmark/batch_gemm_benchmark.c
   double gFlops = 2.0 * total_batch_size * batch_size * m * n * k / time * 1.e-9;
@@ -109,6 +124,7 @@ void obtainGflopsEFF(double time, int total_batch_size, int batch_size, int m, i
 template <typename T>
 T getRandomValue(T low, T high){
     static unsigned seed_val = time(NULL);      //set a fixed seed for testing purposes
+    // cout << seed_val << endl;
     static mt19937 gen(seed_val); 
     if constexpr(std::is_same_v<T, MKL_F16>){     //generate random float values and convert them to mkl_f16 using f2h
         std::uniform_real_distribution<float> dis(static_cast<float>(low), static_cast<float>(high));
@@ -162,6 +178,7 @@ struct CSCMatrix{
     nonZeroCount = new int[total_batch_size];
   }
 };
+
 template <typename T>
 void ProcessCSRMatrix(CSRMatrix<T> &matrix, const int total_batch_size, const int m_, const int n_, const int maxNum){
    for (int i = 0; i < total_batch_size; i++){
@@ -193,18 +210,6 @@ void ProcessCSRMatrix(CSRMatrix<T> &matrix, const int total_batch_size, const in
       matrix.rowPtr[i][m_] = matrix.nonZeroCount[i];    //set last element of rowPtr to be the number of non zeros
       matrix.nonZeros[i] = matrix.nonZeroCount[i];
    }
-  // for (int i = 0; i < matrix.nonZeros[0]; i++){
-  //     cout << matrix.values[0][i] << " ";
-  // }
-  // cout << endl;
-  // for (int i = 0; i < matrix.nonZeros[0]; i++){
-  //     cout << matrix.columns[0][i] << " ";
-  // }
-  //  cout << endl;
-  //  for (int i = 0; i < m_+1; i++){
-  //     cout << matrix.rowPtr[0][i] << " ";
-  //  }
-  //  cout << endl;
 }
 template <typename T>
 void ProcessCSCMatrix(CSCMatrix<T> &matrix, const int total_batch_size, const int m_, const int n_, const int maxNum){
@@ -235,18 +240,6 @@ void ProcessCSCMatrix(CSCMatrix<T> &matrix, const int total_batch_size, const in
       matrix.colPtr[i][n_] = matrix.nonZeroCount[i];    //set last element of Ptr to be the number of non zeros
       matrix.nonZeros[i] = matrix.nonZeroCount[i];
   }
-  // for (int i = 0; i < matrix.nonZeros[0]; i++){
-  //     cout << matrix.values[0][i] << " ";
-  // }
-  // cout << endl;
-  // for (int i = 0; i < matrix.nonZeros[0]; i++){
-  //     cout << matrix.rows[0][i] << " ";
-  // }
-  //  cout << endl;
-  //  for (int i = 0; i < n_+1; i++){
-  //     cout << matrix.colPtr[0][i] << " ";
-  //  }
-  //  cout << endl;
 }
 template <typename T>
 void obtainCSRandPrint(sparse_matrix_t mat, int m, int n){
@@ -341,11 +334,11 @@ void PrintCSRMatrix(const CSRMatrix<T> m1,  const int m_, const int n_){
   //m1.rowPtr[i] = start of current row
   //m1.columns[rowPtr[i] + curCol] = at that row, the column corresponding to the one we're currently on. For instance, row = 2, rowPtr[i] points to the section in columns that corresponds to row 2, and then + curCol allows you to traverse the column
   //m1.values[rowPtr[i] + curCol] = value at that row and col
-  // for (int j = 0; j < m_ ; j++){
-  //   for (int i = m1.rowPtr[0][j]; i < m1.rowPtr[0][j+1]; i++){
-  //     cout << "row start at: " <<  m1.rowPtr[0][j] <<  " row: " << j << " value: " << m1.values[0][i] << "  columns: " << m1.columns[0][i] << endl;
-  //   }
-  // }
+  for (int j = 0; j < m_ ; j++){
+    for (int i = m1.rowPtr[0][j]; i < m1.rowPtr[0][j+1]; i++){
+      cout << "row start at: " <<  m1.rowPtr[0][j] <<  " row: " << j << " value: " << m1.values[0][i] << "  columns: " << m1.columns[0][i] << endl;
+    }
+  }
   cout << "Matrix: " << endl;
   for (int i = 0; i < m_; i++){
     int curCol = 0;
@@ -370,7 +363,7 @@ template <typename T>
 void PrintCSCMatrix(const CSCMatrix<T>& m1, const int m_, const int n_) {
     // for (int j = 0; j < n_ ; j++){
     //   for (int i = m1.colPtr[0][j]; i < m1.colPtr[0][j+1]; i++){
-    //     cout << "col start at: " <<  m1.colPtr[0][j] <<  " col: " << j << " value: " << m1.values[0][i] << "  rows: " << m1.rows[0][i] << endl;
+    //     cout << "col start at: " <<  m1.colPtr[0][j] <<  " col: " << j << " value: " << h2f(m1.values[0][i]) << "  rows: " << m1.rows[0][i] << endl;
     //   }
     // }
     cout << "Matrix:" << endl;
@@ -469,5 +462,218 @@ void transposeCSCMatrix(const CSCMatrix<T>& m1, CSCMatrix<T>& result, const int 
             }
         }
     }
+}
+template <typename T>
+bool ValidateBLASMatrix(const int parallel, const CBLAS_LAYOUT layout, const CBLAS_TRANSPOSE transA, const CBLAS_TRANSPOSE transB, const T* const* a, const T* const* b, const T* const* c, const int* m, const int* n, const int* k, const int m_, const int n_, const int k_, const int batch_count, const int* batch_size, const int* batch_head, const int total_batch_size, const int maxNum, const T* alpha, const T* beta, const int* lda_v, const int* incx, const int* incy){
+    bool isEqual = true;            //employs Freivald's algorithm to validate the results of matrix multiplication
+    CBLAS_TRANSPOSE transC = CblasNoTrans;
+    if (m_ == n_ && n_ == k_){
+      size_t align = 256;
+      T** x = static_cast<T**>(aligned_alloc(align, sizeof(T*)*total_batch_size));      //allocate for arrays to store result
+      T** y = static_cast<T**>(aligned_alloc(align, sizeof(T*)*total_batch_size));    
+      T** z = static_cast<T**>(aligned_alloc(align, sizeof(T*)*total_batch_size));
+      T** r = static_cast<T**>(aligned_alloc(align, sizeof(T*)*total_batch_size));
+      for (int i = 0; i < batch_count; i++){
+        for (int j = 0; j < batch_size[i]; j++){
+          x[batch_head[i]+j] = static_cast<T*>(aligned_alloc(align, sizeof(T) * n_));
+          y[batch_head[i]+j] = static_cast<T*>(aligned_alloc(align, sizeof(T) * n_));
+          z[batch_head[i]+j] = static_cast<T*>(aligned_alloc(align, sizeof(T) * n_));
+          r[batch_head[i]+j] = static_cast<T*>(aligned_alloc(align, sizeof(T) * n_));
+          for (int v = 0; v < n_; v++) {
+            if (getRandomValue<double>(0.0, 1.0) >= 0.50) {
+                  if constexpr (is_same_v<T, MKL_F16>) {        //randomly generate array elements either 0 or 1 
+                      x[batch_head[i]+j][v] = f2h(1);
+                  }
+                  else {
+                      x[batch_head[i]+j][v] = 1;
+                  }
+              } 
+              else {
+                  if constexpr (is_same_v<T, MKL_F16>) {
+                      x[batch_head[i]+j][v] = f2h(0);
+                  } 
+                  else {
+                      x[batch_head[i]+j][v] = 0;
+                  }
+              }
+            }
+        }
+      }
+      performBLASGEMV<T>(parallel, batch_count, batch_size, batch_head, layout, transC, m, k, alpha, c, lda_v, x, incx, beta, y, incy);     //compute CX stored into Y, BX stored into Z, and then AZ stored into R. Then we compare Y == Z to determine if the matrix multiplication result is correct
+      performBLASGEMV<T>(parallel, batch_count, batch_size, batch_head, layout, transB, m, k, alpha, b, lda_v, x, incx, beta, z, incy);
+      performBLASGEMV<T>(parallel, batch_count, batch_size, batch_head, layout, transA, m, k, alpha, a, lda_v, z, incx, beta, r, incy);
+
+      for (int i = 0; i < batch_count; i++){
+        for (int j = 0; j < batch_size[i]; j++){
+          if (isEqual == true){
+            for (int v = 0; v < n_; v++){
+                if ((r[batch_head[i]+j][v] - y[batch_head[i]+j][v]) < 0.001 != true){
+                  isEqual = false;
+                  break;
+              }
+          }
+        }
+        else{
+            break;
+        }
+      }
+    }
+    for (int i = 0; i < batch_count; i++){        //free memory
+      for (int j = 0; j < batch_size[i]; j++){
+          free(x[batch_head[i]+j]);
+          free(y[batch_head[i]+j]);
+          free(z[batch_head[i]+j]);
+          free(r[batch_head[i]+j]);
+      }
+    }
+    free(x);
+    free(y);
+    free(z);
+    free(r);
+    return isEqual;
+  }
+  return false;
+
+}
+template <template <typename> class Matrix, typename T>
+bool ValidateMyCSRCSCMatrix(const Matrix<T>& A, const Matrix<T>& B, const Matrix<T>& C, int m, int n, int k, int total_batch_size, int parallel){
+    bool isEqual = true;        //also employs the Freivald's algorithm
+    if (m == n && n == k){
+        T **x = new T*[total_batch_size];
+        T **y = new T*[total_batch_size];
+        T **z = new T*[total_batch_size];
+        T **r = new T*[total_batch_size];
+        for (int i = 0; i < total_batch_size; i++){
+            x[i] = new T[n];
+            y[i] = new T[n];
+            z[i] = new T[n];
+            r[i] = new T[n];
+            generateVector(y[i], n, 0);
+            generateVector(z[i], n, 0);
+            generateVector(r[i], n, 0);
+            for (int j = 0; j < n; j++){
+                if (getRandomValue<double>(0.0, 1.0) >= 0.50){
+                    if constexpr(is_same_v<T, MKL_F16>){
+                        x[i][j] = f2h(1);
+                    }
+                    else{
+                        x[i][j] = 1;
+                    }
+                }
+                else{
+                    if constexpr(is_same_v<T, MKL_F16>){
+                        x[i][j] = f2h(0);
+                    }
+                    else{
+                        x[i][j] = 0;
+                    }
+                }
+            }
+        }
+        if constexpr(is_same_v<Matrix<T>, CSRMatrix<T>>){
+            CSRMVMultiply(C,x,y,total_batch_size, n, n, parallel);
+            CSRMVMultiply(B,x,z,total_batch_size, n, n, parallel);
+            CSRMVMultiply(A,z,r,total_batch_size, n, n, parallel);
+        }
+        else if constexpr(is_same_v<Matrix<T>, CSCMatrix<T>>){
+            CSCMVMultiply(C,x,y,total_batch_size, n, n, parallel);
+            CSCMVMultiply(B,x,z,total_batch_size, n, n, parallel);
+            CSCMVMultiply(A,z,r,total_batch_size, n, n, parallel);
+            
+        }
+        for (int j = 0; j < total_batch_size; j++){
+            if (isEqual == true){
+                for (int k = 0; k < n; k++){
+                    if constexpr(is_same_v<T, MKL_F16>){
+                        if (std::abs((h2f(r[j][k]) - h2f(y[j][k])) <= 5) != true){
+                            isEqual = false;
+                            break;
+                        }
+                    }
+                    else{
+                        if ((r[j][k] - y[j][k]) < 0.001 != true){
+                            isEqual = false;
+                            break;
+                        }
+                    }
+                }
+            }
+            else{
+                break;
+            }
+        }
+    for (int i = 0; i < total_batch_size; i++){
+        delete [] x[i];
+        delete [] y[i]; 
+        delete [] z[i];
+        delete [] r[i];
+    }
+    delete [] x;
+    delete [] y;
+    delete [] z;
+    delete [] r;
+    return isEqual;
+}
+    return false;
+}
+template <template <typename> class Matrix, typename T>
+bool ValidateDenseSparseMatrix(Matrix<T>** A, Matrix<T>**  B, Matrix<T>**  C, int m, int n, int k, int total_batch_size){
+    bool isEqual = true;        //also employs the Freivvald's algorithm
+    if (m == n && n == k){
+        vector<vector<T>> x(total_batch_size, vector<T>(n, 0));
+        vector<vector<T>> y(total_batch_size, vector<T>(n, 0));
+        vector<vector<T>> z(total_batch_size, vector<T>(n, 0));
+        vector<vector<T>> r(total_batch_size, vector<T>(n, 0));
+        for (int i = 0; i < total_batch_size; i++) {
+            x[i].resize(n, 0); // Resize x[i] to have 'n' elements
+            for (int j = 0; j < n; j++) {
+                if (getRandomValue<double>(0.0, 1.0) >= 0.50) {
+                    if constexpr (is_same_v<T, MKL_F16>) {
+                        x[i][j] = f2h(1);
+                    } else {
+                        x[i][j] = 1;
+                    }
+                } else {
+                    if constexpr (is_same_v<T, MKL_F16>) {
+                        x[i][j] = f2h(0);
+                    } else {
+                        x[i][j] = 0;
+                    }
+                }
+            }
+        }
+            for (int i = 0; i < total_batch_size; i++){
+                z[i] = (*B[i]) * x[i];
+            }
+            for (int i = 0; i < total_batch_size; i++){
+                y[i] = (*C[i]) * x[i];
+            }
+            for (int i = 0; i < total_batch_size; i++){
+                r[i] = (*A[i]) * z[i];
+            }
+            for (int j = 0; j < total_batch_size; j++){
+                if (isEqual == true){
+                    for (int k = 0; k < n; k++){
+                        if constexpr(is_same_v<T, MKL_F16>){
+                            if (std::abs((h2f(r[j][k]) - h2f(y[j][k])) <= 5) != true){
+                                isEqual = false;
+                                break;
+                            }
+                        }
+                        else{
+                            if (r[j][k] - y[j][k] < 0.001 != true){
+                                isEqual = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+                else{
+                    break;
+                }
+           } 
+        return isEqual;  
+    }
+    return false;
 }
 #endif

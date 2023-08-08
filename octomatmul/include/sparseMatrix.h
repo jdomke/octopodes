@@ -107,7 +107,6 @@ SparseMatrix<T> :: SparseMatrix(int Row, int Col, int NonZeros, T high, int para
     nonZeros_ = NonZeros;
     parallel_ = parallel;
     map<pair<int,int>, int> posDupe;
-    srand(10);
     if (high > 0){
         for (int i = 0; i < nonZeros_; i++){
             int row = rand() % Row;         //obtain the number of nonZeros and generate that many random elements for the matrix
@@ -303,15 +302,11 @@ SparseMatrix<T> SparseMatrix<T>::operator*(const SparseMatrix<T>& rhs) {
         exit(1);
     }
 
-    // transpose rhs matrix
-    auto rhsT(rhs);
-    rhsT = rhsT.Transpose();
+    SparseMatrix<T> resMatrix(getRows(), rhs.getCols(), 0, 0);
 
-    SparseMatrix<T> resMatrix(getRows(), rhsT.getCols(), 0, 0);
-
-    // Precompute the row-wise representation of rhsT
+    // Precompute the row-wise representation of rhs
     unordered_map<int, unordered_map<int, T>> rhsRowWise;
-    for (const auto& itr : rhsT.eleLocation_) {
+    for (const auto& itr : rhs.eleLocation_) {
         rhsRowWise[itr.first.first][itr.first.second] = itr.second;
     }
 
