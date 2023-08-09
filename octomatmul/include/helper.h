@@ -123,8 +123,7 @@ void obtainGflopsEFF(double time, int total_batch_size, int batch_size, int m, i
 
 template <typename T>
 T getRandomValue(T low, T high){
-    static unsigned seed_val = time(NULL);      //set a fixed seed for testing purposes
-    // cout << seed_val << endl;
+    static unsigned seed_val = 15;      //set a fixed seed for testing purposes
     static mt19937 gen(seed_val); 
     if constexpr(std::is_same_v<T, MKL_F16>){     //generate random float values and convert them to mkl_f16 using f2h
         std::uniform_real_distribution<float> dis(static_cast<float>(low), static_cast<float>(high));

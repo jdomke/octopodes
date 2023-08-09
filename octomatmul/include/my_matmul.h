@@ -134,7 +134,6 @@ template <typename T>
 void multiplyCSRSparseMatrices(const CSRMatrix<T>& A, const CSRMatrix<T>& B, CSRMatrix<T>& result, const int aRow, const int aCol, const int bRow, const int bCol, const int total_batch_size, const int parallel_) {
     int A_rows = aRow;
     int B_cols = bCol;
-
     for (int batch = 0; batch < total_batch_size; batch++) {
         result.values[batch] = new T[aRow * bCol];
         result.columns[batch] = new int[aRow * bCol];
@@ -149,6 +148,7 @@ void multiplyCSRSparseMatrices(const CSRMatrix<T>& A, const CSRMatrix<T>& B, CSR
         for (int i = 0; i < A_rows; ++i) {
             int rowStart = result.rowPtr[batch][i];
             for (int k = A.rowPtr[batch][i]; k < A.rowPtr[batch][i + 1]; ++k) {
+              rowNonZeroCounts[i] = 0;
                 int A_col = A.columns[batch][k];
                 for (int l = B.rowPtr[batch][A_col]; l < B.rowPtr[batch][A_col + 1]; ++l) {
                     int j = B.columns[batch][l];
@@ -228,7 +228,6 @@ void multiplyCSRSparseMatrices(const CSRMatrix<T>& A, const CSRMatrix<T>& B, CSR
         result.values[batch] = temp_values;
         result.columns[batch] = temp_columns;
     }
-  
 }
 template <typename T>
 void multiplyCSCSparseMatrices(const CSCMatrix<T>& A, const CSCMatrix<T>& B, CSCMatrix<T>& result, const int aRow, const int aCol, const int bRow, const int bCol, const int total_batch_size, const int parallel_) {
