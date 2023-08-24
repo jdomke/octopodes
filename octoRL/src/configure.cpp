@@ -166,15 +166,9 @@ octorl::LayerInfo layerParse(const Setting& layer) {
     label = (const char *)layer.lookup("label");
     layer.lookupValue("input", input);
     layer.lookupValue("output", output);
-
-    //if(layer.exists("kernel_size"))
     layer.lookupValue("kernel_size", kernel_size);
-    
     layer.lookupValue("stride", stride);
-    //if(layer.exists("padding"))
-    layer.lookupValue("padding", padding);
-    
-    //if(layer.exists("dilation"))
+    layer.lookupValue("padding", padding); 
     layer.lookupValue("dilation", dilation);
     
     return octorl::LayerInfo(type, activation, label, input, output, kernel_size, stride, padding, dilation);

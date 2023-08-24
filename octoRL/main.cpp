@@ -69,10 +69,6 @@ int main(int argc, char** argv) {
    	
 	cout<<"Values for rank "<<rank<<" Cyc: "<<values[0]<<" Ins: "<<values[1]<<" Br: "<<values[2]<<
 	   " IPC: "<<real(values[1])/real(values[0])<<endl;
-  /*if(rank == 0)
-	cout<<"rank0 "<<values[1]<<endl;		
-  else
-	cout<<values[1]<<",";*/
 	MPI_Finalize();
  return 0;
 }

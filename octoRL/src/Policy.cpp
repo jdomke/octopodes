@@ -27,27 +27,18 @@ torch::Tensor octorl::Policy::forward(torch::Tensor x) {
 
     int i = 0;
     for(i; i < layer_info.size(); i++) {
-        //x = activation(layers[i]->as<torch::nn::Linear>()->forward(x),layer_info[i].activation);
-       // x = activation(layers[i]->forward(x),layer_info[i].activation);
         switch (layer_info[i].type) {
             case linear:
                 x = activation(linear_layers[layer_info[i].vect_position]->forward(x),layer_info[i].activation);
-                
-               // std::cout<<layer_info[i].label<<" "<<x<<std::endl;
                 break;
             case conv2d:
                 x = activation(conv2d_layers[layer_info[i].vect_position]->forward(x),layer_info[i].activation);
-             //   std::cout<<layer_info[i].label<<" "<<x<<std::endl;
                 break;
             case max_pool_2d:
                 x = activation(pool2d_layers[layer_info[i].vect_position]->forward(x),layer_info[i].activation);
-                // std::cout<<layer_info[i].label<<" "<<x<<std::endl;
                 break;
             case flatten:
                 x = activation(flatten_layers[layer_info[i].vect_position]->forward(x),layer_info[i].activation);
-                //x = activation(x.reshape({1,-1}), layer_info[i].activation);
-                //x = x.reshape({x.size(-1), x.size(0)});
-                //std::cout<<layer_info[i].label<<" "<<x<<std::endl;
                 break;
             default:
                 break;
@@ -126,7 +117,6 @@ void octorl::Policy::serialize(float *buffer) {
 }
 
 
-// rework
 
 void octorl::Policy::loadFromSerial(float *buffer){
     torch::autograd::GradMode::set_enabled(false);

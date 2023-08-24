@@ -23,8 +23,6 @@
 namespace octorl {
     struct actor {
         std::shared_ptr<EnvironmentsBase> env;
-        //Mlp model;
-        //Mlp target;
     };
 
     class DqnAsync {

@@ -60,7 +60,6 @@ void octorl::A3C::test() {
 	}
         if(obs.goal){
             test_goals++;
-            //std::cout<<rewards<<std::endl;
         }
         
     }
@@ -104,9 +103,8 @@ void octorl::A3C::globalNetworkRun() {
         recvCriticGradientAndStep(src);
         sendActorModel(src);
         sendCriticModel(src);
-        if(time_steps - i <= num_ranks - 1) {
+        if(time_steps - i <= num_ranks - 1) 
             sendKeepRunning(false, src);
-        }
         else
             sendKeepRunning(true, src);
 
@@ -120,16 +118,13 @@ void octorl::A3C::globalNetworkRun() {
 	     act = action(obs.observation);
             obs = env->step(act);
             rewards += obs.reward;
-	}
+    	}
         if(obs.goal){
             
             std::cout<<"Reached Goal: "<<rewards<<std::endl;
             std::cout<<"Time: "<<std::time(NULL)<<std::endl;
 
         }
-
-
-
     }
 }
 
@@ -176,14 +171,11 @@ void octorl::A3C::calculateGradient(torch::Tensor R) {
         torch::Tensor prob = actor.forward(actor_memory[i].state).to(device);
         
         
-        //torch::Tensor actor_loss = -1*torch::log(torch::matmul(prob,actor_memory[i].action_mask) + 1e-10)*(R - actor_memory[i].value);///scale;
         torch::Tensor actor_loss = -1*torch::log(prob[0][actor_memory[i].action] + 1e-10)*(R - actor_memory[i].value)/scale;
         torch::Tensor entropy = torch::sum(prob*torch::log(prob * 1e-10));
-        //actor_loss /= scale;
         actor_loss += entropy_param*entropy;
         torch::Tensor value = critic.forward(actor_memory[i].state).to(device);
         torch::Tensor value_loss = torch::mse_loss(R, value)/scale;  
-        //std::cout<<actor_loss<<std::endl;
         actor_loss.backward();
         value_loss.backward();
     }

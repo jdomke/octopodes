@@ -1,13 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
-#export CXX=/usr/local/bin/g++-10
-#set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-10")
 SET(CMAKE_CUDA_STANDARD 11)
-##set(Torch_DIR "C:/Users/dmend/AppData/Local/Programs/Python/Python310/lib/site-packages/torch/share/cmake")
 project(OctoRL
     VERSION 0.01
     DESCRIPTION "RL OCTOPODE"
     LANGUAGES CXX)
-#set (CMAKE_CXX_STANDARD 20)
 find_package(Torch REQUIRED)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fopenmp")
 include_directories(SYSTEM ${TORCH_INCLUDE_DIRS})
@@ -21,8 +17,6 @@ find_package(MPI REQUIRED)
 find_package(libconfig REQUIRED)
 
 find_library(libconfig config)
-#find_library(LIBCONFIGPP_LOCATION libconfig++)
-#find_library(LIBCONFIG_LOCATION libconfig)
 find_library(libconfig libconfig)
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(PAPI REQUIRED)
@@ -59,13 +53,6 @@ target_link_libraries(main "${TORCH_LIBRARIES}" OpenMP::OpenMP_CXX MPI::MPI_CXX 
 
 
 set_property(TARGET main PROPERTY CXX_STANDARD 17)
-
-    #include_directories(${PROJECT_SOURCE_DIR})
-
-#if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-#set(TORCH_CXX_FLAGS "-D_GLIBCXX_USE_CXX17_ABI=1")
-#endif()    
-    #add_subdirectory(src)
 target_include_directories(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 if (MSVC)
   file(GLOB TORCH_DLLS "${TORCH_INSTALL_PREFIX}/lib/*.dll")
