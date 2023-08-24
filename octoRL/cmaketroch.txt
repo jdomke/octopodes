@@ -10,3 +10,4 @@ cmake -D CMAKE_PREFIX_PATH=C:/Users/dmend/AppData/Local/Programs/Python/Python31
 cmake -DCMAKE_PREFIX_PATH=/home/yes/anaconda3/lib/python3.10/site-packages/torch/share/cmake -DOpenMP_C_FLAG=-fopenmp -DOpenMP_CXX_FLAG=-fopenmp ..
 cmake -DCMAKE_PREFIX_PATH=/home/dmend/.local/lib/python3.11/site-packages/torch/share/cmake -DOpenMP_C_FLAG=-fopenmp -DOpenMP_CXX_FLAG=-fopenmp ..
 cmake -DCMAKE_PREFIX_PATH=/home/dmend/octopodes/venv/lib64/python3.11/site-packages/torch/share/cmake -DOpenMP_C_FLAG=-fopenmp -DOpenMP_CXX_FLAG=-fopenmp ..
+cmake -DCMAKE_PREFIX_PATH=/home/apps/oss/PyTorch-1.7.0/lib/python3.8/site-packages/torch/share/cmake ..
