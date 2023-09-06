@@ -19,3 +19,7 @@ initial attempt at creating octopode benchmarks
 	file = {Satoshi Matsuoka et al. - 2022 - Preparing for the Future---Rethinking Proxy Applic.pdf:/home/domke/Documents/Zotero/storage/5AAF7VJ5/Satoshi Matsuoka et al. - 2022 - Preparing for the Future---Rethinking Proxy Applic.pdf:application/pdf},
 }
 ```
+
+# Contributors
+David Mendelsohn (octoRL)
+Linwei Jiang (octomatmul)
