@@ -21,5 +21,5 @@ initial attempt at creating octopode benchmarks
 ```
 
 # Contributors
-David Mendelsohn (octoRL)
-Linwei Jiang (octomatmul)
+- David Mendelsohn (octoRL)
+- Linwei Jiang (octomatmul)
